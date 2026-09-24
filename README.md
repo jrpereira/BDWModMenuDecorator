@@ -1,8 +1,8 @@
-# KEngineMenu
+# ModCore Settings
 
-KEngineMenu (KEM) is a developer tool that extends Dawnwalker Mod Menu with key-binding controls.
+ModCoreSettings (KEM) is a developer tool that extends Dawnwalker Mod Menu with key-binding controls.
 
-Keep using Mod Menu's normal configuration system. Add a little metadata, and KEngineMenu turns an integer setting into a key picker, optionally combining it with a Tap/Hold selector. Mod Menu continues handling Apply, Reset, and saving.
+Keep using Mod Menu's normal configuration system. Add a little metadata, and ModCoreSettings turns an integer setting into a key picker, optionally combining it with a Tap/Hold selector. Mod Menu continues handling Apply, Reset, and saving.
 
 The source also serves as a practical example of extending existing Unreal UI: finding existing controls, adding widgets to their owning page, and connecting custom presentation to the original settings system.
 
@@ -15,6 +15,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 - Renders pickers as right-aligned tabs and applies six typography levels. On generated module pages, a level-one setting shares the mod page title row above the divider.
 - Supports conditional group help, value-dependent labels and category ordering while preserving existing setting IDs.
 - Supports metadata-based integration through `mod_settings.ini`—no registration code required.
+- Reads existing `amm*` presentation metadata from installed mods during migration to `kem*`; explicit `kem*` fields take precedence.
 - Preserves Mod Menu's Apply, Reset, and configuration-saving behavior.
 - Adds separate hover feedback for key and mode pickers, plus highlighting during key capture.
 - Supports Escape cancellation and displays unbound keys.
@@ -22,7 +23,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 - Keeps decorations attached to their owning rows and recreates them when pages rebuild.
 - Uses menu-scoped updates without a permanent gameplay polling loop.
 - Provides example configurations and source code for learning how to extend existing Unreal UI.
-- Bundles the `menu.fixes` template at `Scripts/fixes.lua` for registration by KEngineTemplates.
+- Bundles the `menu.fixes` template at `Scripts/fixes.lua` for registration by ModCoreTemplates.
 - Pairs with UE4SSLuaEventBridge for implementing Enhanced Input and Tap/Hold behavior.
 
 ## Known Issues / Improvements
@@ -33,11 +34,11 @@ The source also serves as a practical example of extending existing Unreal UI: f
 
 ## Documentation
 
-See the [documentation on GitHub](https://github.com/jrpereira/BDWAdaptiveModMenu/tree/main/docs) and the [developer integration guide](https://github.com/jrpereira/BDWAdaptiveModMenu/blob/main/docs/DEVELOPERS.md).
+See the [documentation on GitHub](https://github.com/jrpereira/ModCoreSettings/tree/main/docs) and the [developer integration guide](https://github.com/jrpereira/ModCoreSettings/blob/main/docs/DEVELOPERS.md).
 
 ## Installation
 
-Install the package as `Mods/_KEngineMenu`, then enable it through your mod
+Install the package as `Mods/_ModCore_Settings`, then enable it through your mod
 manager or UE4SS configuration. Remove the old `Mods/AdaptiveModMenu` folder
 before starting the game. The archive does not create `enabled.txt`.
 Restart the game after installing or updating it.
@@ -88,14 +89,14 @@ Keep both settings in the same group. If DMM hides `MyAction`, KEM hides only th
 
 That's it—magic! The key picker and Tap/Hold selector appear together. No registration code is required.
 
-Your mod still interprets the values. KEngineMenu provides the GUI upgrades, not the input behavior.
+Your mod still interprets the values. ModCoreSettings provides the GUI upgrades, not the input behavior.
 
 It also pairs well with [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge), which exposes Unreal's Enhanced Input to Lua, including support for Tap/Hold bindings.
 
 ## Developer links
 
-- [Integration guide](https://github.com/jrpereira/BDWAdaptiveModMenu/blob/main/docs/DEVELOPERS.md)
-- [Complete example provider](https://github.com/jrpereira/BDWAdaptiveModMenu/tree/main/examples/ExampleMod)
-- [UI implementation](https://github.com/jrpereira/BDWAdaptiveModMenu/tree/main/Scripts)
+- [Integration guide](https://github.com/jrpereira/ModCoreSettings/blob/main/docs/DEVELOPERS.md)
+- [Complete example provider](https://github.com/jrpereira/ModCoreSettings/tree/main/examples/ExampleMod)
+- [UI implementation](https://github.com/jrpereira/ModCoreSettings/tree/main/Scripts)
 - [QuickslotsForever](https://github.com/jrpereira/BDWQuickslotsForever)
 - [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge)

@@ -67,9 +67,9 @@ local key,mode,toggle=row('Ability','82',slider),row('Mode','Tap',picker),row('E
 local literal=row('* Literal label','Option *',{kind='picker',labels={'Option *','Other'}})
 local fallback=row('No italic face','1',slider);fallback.labelWidget.Font.FontObject={}
 local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},kemHeader=true})
-header.providerId='KEngineTemplates.module.ActionFandango'
+header.providerId='ModCoreTemplates.module.ActionFandango'
 local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},kemHeader=true})
-template.providerId='KEngineTemplates'
+template.providerId='ModCoreTemplates'
 local all={key,mode,toggle,literal,fallback,header,template}
 local function star(r)
     for _,w in ipairs(r.shell.children) do if w.text=='*' then return w end end

@@ -338,7 +338,7 @@ function M.run(log,initialize,overrides)
     local owner=tostring({}):gsub('%W','')
     local function ready()
         if finished or env.get(READY)~='1' then return false end
-        if env.get(CLAIM) then log('DMM_DUPLICATE_INIT','another KEngineMenu instance already initialized');finished=true;return false end
+        if env.get(CLAIM) then log('DMM_DUPLICATE_INIT','another ModCoreSettings instance already initialized');finished=true;return false end
         env.set(CLAIM,owner)
         local ok,result=pcall(initialize)
         if not ok or result==false then

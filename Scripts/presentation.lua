@@ -3,7 +3,7 @@ local M={version=1}
 local pairHostMarkerPrefix='KEM_PAIR_HOST_1\n'
 local dirtySignalPrefix='KEM_VALUE_DIRTY_1\n'
 local function modulePage(provider)
-    return type(provider.id)=='string' and provider.id:match('^KEngineTemplates%.module%.')~=nil
+    return type(provider.id)=='string' and provider.id:match('^ModCoreTemplates%.module%.')~=nil
 end
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function identityText(value)
@@ -238,7 +238,7 @@ function M.install(choices,controls,pages)
                     add(row.wrapper:GetContent(),row.kemModeState)
                 end
                 local level=setting.kemFont
-                if level==1 and providers[index].id=='KEngineTemplates' then level=2 end
+                if level==1 and providers[index].id=='ModCoreTemplates' then level=2 end
                 M.style(row.kemLabel,level,api)
                 if level==1 then
                     local slot=setting.kind=='toggle' and row.widget:GetContent().Slot or row.kemLabel.Slot
@@ -692,9 +692,9 @@ function M.install(choices,controls,pages)
             for _,row in ipairs(page.allRows or {}) do
                 local label=api.need(row.widget:GetContent(),'KEM mod-list label')
                 local provider=providers[row.providerIndex]
-                local browserLevel=provider and provider.kemBrowserLevel or 2
+                local browserLevel=provider and (provider.kemBrowserLevel or provider.ammBrowserLevel) or 2
                 if not styles[browserLevel] then browserLevel=2 end
-                local indent=provider and provider.kemBrowserIndent
+                local indent=provider and (provider.kemBrowserIndent or provider.ammBrowserIndent)
                 if indent==nil then indent=0 end
                 if type(indent)~='number' or indent< -80 or indent>80 then indent=0 end
                 M.style(label,browserLevel,api)

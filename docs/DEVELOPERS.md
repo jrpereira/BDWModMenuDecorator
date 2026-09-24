@@ -1,6 +1,6 @@
-# Integrating KEngineMenu
+# Integrating ModCoreSettings
 
-KEngineMenu replaces explicitly marked Dawnwalker Mod Menu (DMM) numeric key
+ModCoreSettings replaces explicitly marked Dawnwalker Mod Menu (DMM) numeric key
 controls with key-capture controls. An optional mode picker is displayed on the same
 row. Your mod continues to own its configuration and gameplay behavior; DMM owns
 pending edits, dirty state, Apply, saving, Reset, and Restore.
@@ -13,9 +13,9 @@ separately. Choosing a key in the menu only changes a setting.
 
 The current implementation targets Dawnwalker with UE4SS/Lua 5.4 and the tested DMM
 widget layout. It is not a generic settings framework for every Unreal game or DMM
-version. Install DMM and KEngineMenu as separate UE4SS mods. Do not copy DMM
+version. Install DMM and ModCoreSettings as separate UE4SS mods. Do not copy DMM
 source into your mod. The package uses the directory name
-`_KEngineMenu` even though this repository is named `BDWAdaptiveModMenu`.
+`_ModCore_Settings` even though this repository is named `BDWAdaptiveModMenu`.
 Remove the old `AdaptiveModMenu` mod folder before starting the game. KEM reads
 `kem*` manifest fields and does not migrate `amm*` metadata or saved settings.
 
@@ -24,7 +24,7 @@ Your provider folder needs `mod_settings.ini` and its own configuration file, fo
 ```text
 Mods/
   DawnwalkerModMenu/
-  _KEngineMenu/
+  _ModCore_Settings/
     enabled.txt
     Scripts/main.lua
   ExampleMod/
@@ -223,7 +223,7 @@ metadata is the integration surface.
 
 ## Release logging and integration checklist
 
-`UE4SS.log` contains one ready message plus actionable failures under `[KEngineMenu]`.
+`UE4SS.log` contains one ready message plus actionable failures under `[ModCoreSettings]`.
 Verbose construction, binding and capture traces are removed; there is no debug-mode toggle.
 Discovery runs once per coalesced DMM provider callback, after DMM completes row
 construction. The callback normally supplies the exact provider ScrollBox; one
@@ -273,7 +273,7 @@ Lua bindings and primitive traversal routes are temporary, discarded on scope ch
 
 ## Optional live inspection helper — UEBridge
 
-UE4SS Bridge – Live Lua MCP (littleRabbit94/ue4ss-bridge, Nexus mod 198) is an optional development/debugging helper, separate from UE4SSLuaEventBridge. KEngineMenu must work fully with UEBridge absent or disabled. Do not add production imports, IPC calls, startup checks, bundled helper files, installer requirements, CI/release requirements, or features that depend on it. Keep any diagnostic scripts and setup instructions separate from production artifacts and explicitly optional.
+UE4SS Bridge – Live Lua MCP (littleRabbit94/ue4ss-bridge, Nexus mod 198) is an optional development/debugging helper, separate from UE4SSLuaEventBridge. ModCoreSettings must work fully with UEBridge absent or disabled. Do not add production imports, IPC calls, startup checks, bundled helper files, installer requirements, CI/release requirements, or features that depend on it. Keep any diagnostic scripts and setup instructions separate from production artifacts and explicitly optional.
 
 Use only bounded, targeted inspections and before/after snapshots to test concrete hypotheses about settings widget identity, key/Mode selection, DMM dirty/Apply state, and menu lifecycle. Do not start automatic watches or hooks. Ask the user before taking computer control; helper availability is not permission to interact with the game. Preserve configuration. Disable the helper for performance baselines and verify final fixes with it absent or disabled.
 
@@ -320,7 +320,7 @@ Level2/3 use the heading color; Level4 uses normal body text; Level5/6 use
 muted text, with Level5 at 85% opacity. The property applies to setting labels
 and Category headings without changing control types.
 
-On generated KEngineTemplates module pages, a setting at typography level 1
+On generated ModCoreTemplates module pages, a setting at typography level 1
 shares the mod page title row above the divider. Its setting label is hidden
 while the original control retains its value and navigation. Dirty styling is
 omitted from this title row. The Templates page keeps its level-one settings in

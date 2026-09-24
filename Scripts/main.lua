@@ -4,7 +4,7 @@ local function log(event,detail)
     if event=='SELECTOR_DISABLED' or event=='DMM_REQUIRED' or event=='DMM_INCOMPATIBLE'
         or event=='DMM_RESTART_REQUIRED' or event=='DMM_DUPLICATE_INIT' or event=='DMM_PATCHED'
         or event:find('FAILED',1,true) or event:find('UNAVAILABLE',1,true) or event:find('EXCEPTION',1,true) then
-        print(string.format('[KEngineMenu] %s %s\n',event,detail or ''))
+        print(string.format('[ModCoreSettings] %s %s\n',event,detail or ''))
     end
 end
 local initialized=false
@@ -14,7 +14,7 @@ local function initialize()
     local ok,err=Binding.install(log)
     if not ok then log('DMM_BINDING_UNAVAILABLE',tostring(err));return false end
     initialized=true
-    print('[KEngineMenu] '..VERSION..' ready\n')
+    print('[ModCoreSettings] '..VERSION..' ready\n')
     return true
 end
 Bootstrap.run(log,initialize)

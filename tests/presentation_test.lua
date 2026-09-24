@@ -220,7 +220,7 @@ assert(categoryLabel.text=='Menu Controls' and categoryLabel.Font.Size==14 and c
     'Category modules must accept level-four browser styling')
 assert(categoryLabel.Slot.Padding.Left==20,
     'Category modules must accept a small browser indentation')
-local ui=controls.build(widget(),{{id='KEngineTemplates.module.ActionFandango',choices=items}},api)
+local ui=controls.build(widget(),{{id='ModCoreTemplates.module.ActionFandango',choices=items}},api)
 ui.kemHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
@@ -373,7 +373,7 @@ local pickerHeaderSchema=schema:gsub('Id=Primary\nkemType=tab\nkemLevel=2',
     'Id=Primary\nkemType=tab\nkemLevel=1'):gsub('Id=Enabled\nkemLevel=1',
     'Id=Enabled\nkemLevel=2')
 M.parse(pickerHeaderSchema,items)
-local templatePage=controls.build(widget(),{{id='KEngineTemplates',choices=items}},api)
+local templatePage=controls.build(widget(),{{id='ModCoreTemplates',choices=items}},api)
 templatePage.kemHeaderHost=page.controls.kemHeaderHost
 templatePage.kemHeaderTitle=page.modTitle
 templatePage:show(1)
@@ -383,7 +383,7 @@ assert(not templatePage.panels[1].rows[1].kemHeader
     and templatePage.panels[1].rows[1].kemLabel.Font.Size==16
     and templatePage.panels[1].rows[1].kemLabel.Slot.Padding.Left==20,
     'Template page must keep its picker in a normally styled and indented row')
-local pickerHeader=controls.build(widget(),{{id='KEngineTemplates.module.ActionFandango',choices=items}},api)
+local pickerHeader=controls.build(widget(),{{id='ModCoreTemplates.module.ActionFandango',choices=items}},api)
 pickerHeader.kemHeaderHost=page.controls.kemHeaderHost
 pickerHeader.kemHeaderTitle=page.modTitle
 pickerHeader:show(1)
