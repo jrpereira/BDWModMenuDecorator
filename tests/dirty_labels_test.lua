@@ -67,7 +67,7 @@ local key,mode,toggle=row('Ability','82',slider),row('Mode','Tap',picker),row('E
 local literal=row('* Literal label','Option *',{kind='picker',labels={'Option *','Other'}})
 local fallback=row('No italic face','1',slider);fallback.labelWidget.Font.FontObject={}
 local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},mcHeader=true})
-header.providerId='ModCoreTemplates.module.ActionFandango'
+header.providerId='ModCoreTemplates.module.ActionFangdango'
 local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},mcHeader=true})
 template.providerId='ModCoreTemplates'
 local all={key,mode,toggle,literal,fallback,header,template}
