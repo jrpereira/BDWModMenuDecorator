@@ -66,14 +66,14 @@ function M.parse(content,items,choices)
             for _,value in ipairs(setting.values) do
                 assert(value==custom or mapping.values[value],'missing mapped preset values')
             end
-            setting.kemMapping=mapping
+            setting.mcMapping=mapping
         end
     end
     for i,s in ipairs(items) do
-        if s.kemMapping then
+        if s.mcMapping then
             assert(not owners[i],'a mapped preset cannot itself be a linked target')
-            for _,target in ipairs(s.kemMapping.targets) do
-                assert(not items[target].kemMapping and not items[target].targets,'nested mapped presets are unsupported')
+            for _,target in ipairs(s.mcMapping.targets) do
+                assert(not items[target].mcMapping and not items[target].targets,'nested mapped presets are unsupported')
             end
         end
     end
@@ -81,18 +81,18 @@ function M.parse(content,items,choices)
 end
 
 function M.wrap(model,choices)
-    if model.kemMappedVersion then return model end
+    if model.mcMappedVersion then return model end
     local owners,mappings={},{ }
     for i,s in ipairs(model.items) do
-        if s.kemMapping then
-            mappings[i]=s.kemMapping
-            for _,target in ipairs(s.kemMapping.targets) do owners[target]=i end
+        if s.mcMapping then
+            mappings[i]=s.mcMapping
+            for _,target in ipairs(s.mcMapping.targets) do owners[target]=i end
         end
     end
     if next(mappings)==nil or model.error then return model end
-    model.kemMappedVersion=M.version
-    model.kemHiddenDirty={}
-    model.kemVisualDirty={}
+    model.mcMappedVersion=M.version
+    model.mcHiddenDirty={}
+    model.mcVisualDirty={}
     local showDirty=true
     local set,reset,restore,apply,change=model.set,model.reset,model.restore,model.apply,model.change
     local baseline={}
@@ -111,12 +111,12 @@ function M.wrap(model,choices)
         local before=self.pending[index]
         local mapping=mappings[index]
         -- Custom describes unmatched bindings; it is never a user-selected preset.
-        if mapping and value==mapping.custom then self.kemRejectedIndex=index;return end
+        if mapping and value==mapping.custom then self.mcRejectedIndex=index;return end
         local snapshot,hidden
         if mapping then
             snapshot={};hidden={}
             for i,v in ipairs(self.pending) do snapshot[i]=v end
-            for i,v in pairs(self.kemHiddenDirty) do hidden[i]=v end
+            for i,v in pairs(self.mcHiddenDirty) do hidden[i]=v end
         end
         set(self,index,value)
         if mapping then
@@ -127,18 +127,18 @@ function M.wrap(model,choices)
             local ok,err=pcall(function()
                 for n,target in ipairs(mapping.targets) do
                     set(self,target,values[n])
-                    self.kemHiddenDirty[target]=self.pending[target]~=self.committed[target] or nil
+                    self.mcHiddenDirty[target]=self.pending[target]~=self.committed[target] or nil
                 end
             end)
             self:showDirty(previous)
             if not ok then
                 for i,v in ipairs(snapshot) do self.pending[i]=v end
-                self.kemHiddenDirty=hidden
+                self.mcHiddenDirty=hidden
             end
             assert(ok,err)
-            for _,target in ipairs(mapping.targets) do baseline[target]=self.pending[target];self.kemVisualDirty[target]=false end
+            for _,target in ipairs(mapping.targets) do baseline[target]=self.pending[target];self.mcVisualDirty[target]=false end
         elseif before~=self.pending[index] then
-            self.kemHiddenDirty[index]=not showDirty and self.pending[index]~=self.committed[index] or nil
+            self.mcHiddenDirty[index]=not showDirty and self.pending[index]~=self.committed[index] or nil
             local owner=owners[index]
             if owner then
                 local selected=mappings[owner].custom
@@ -153,8 +153,8 @@ function M.wrap(model,choices)
                     end
                 end
                 set(self,owner,selected)
-                self.kemHiddenDirty[index]=baseline[index]~=nil and self.pending[index]==baseline[index] or nil
-                if baseline[index]~=nil then self.kemVisualDirty[index]=self.pending[index]~=baseline[index] end
+                self.mcHiddenDirty[index]=baseline[index]~=nil and self.pending[index]==baseline[index] or nil
+                if baseline[index]~=nil then self.mcVisualDirty[index]=self.pending[index]~=baseline[index] end
             end
         end
     end
@@ -171,12 +171,12 @@ function M.wrap(model,choices)
         end
     end
     function model:restore()
-        restore(self);self.kemHiddenDirty={};self.kemVisualDirty={};baseline={};showDirty=true
+        restore(self);self.mcHiddenDirty={};self.mcVisualDirty={};baseline={};showDirty=true
     end
     function model:reset(index)
         reset(self,index)
         if not index then
-            self.kemHiddenDirty={};self.kemVisualDirty={};baseline={};showDirty=true
+            self.mcHiddenDirty={};self.mcVisualDirty={};baseline={};showDirty=true
             for owner,mapping in pairs(mappings) do
                 if not matches(owner) then set(self,owner,mapping.custom) end
             end
@@ -184,7 +184,7 @@ function M.wrap(model,choices)
     end
     function model:apply()
         local ok,err,event=apply(self)
-        if ok then self.kemHiddenDirty={};self.kemVisualDirty={};baseline={};showDirty=true end
+        if ok then self.mcHiddenDirty={};self.mcVisualDirty={};baseline={};showDirty=true end
         return ok,err,event
     end
     -- A stale saved preset ID never overwrites saved custom keys on opening.
@@ -199,8 +199,8 @@ function M.install(choices,controls)
         and type(choices.index)=='function' and type(choices.snap)=='function'
         and type(choices.format)=='function','unsupported DMM choices API')
     assert(type(controls)=='table' and type(controls.build)=='function','unsupported DMM controls API')
-    if choices.kemMappedVersion then
-        assert(choices.kemMappedVersion==M.version and controls.kemMappedVersion==M.version,'incompatible KEM mapping wrapper')
+    if choices.mcMappedVersion then
+        assert(choices.mcMappedVersion==M.version and controls.mcMappedVersion==M.version,'incompatible KEM mapping wrapper')
         return false
     end
     local parse,open,build=choices.parse,choices.open,controls.build
@@ -211,10 +211,10 @@ function M.install(choices,controls)
         local ui,indices
         adapted.setText=function(widget,text)
             local index=indices and indices[widget]
-            local visual=index and ui.model.kemVisualDirty and ui.model.kemVisualDirty[index]
+            local visual=index and ui.model.mcVisualDirty and ui.model.mcVisualDirty[index]
             if visual~=nil then
                 text=choices.format(ui.model.items[index],ui.model.pending[index])..(visual and ' *' or '')
-            elseif index and ui.model.kemHiddenDirty and ui.model.kemHiddenDirty[index] then
+            elseif index and ui.model.mcHiddenDirty and ui.model.mcHiddenDirty[index] then
                 -- This changes presentation only; committed values are untouched.
                 text=choices.format(ui.model.items[index],ui.model.pending[index])
             end
@@ -227,19 +227,19 @@ function M.install(choices,controls)
             local panel=self.panels[self.active]
             for i,row in ipairs(panel.rows) do
                 indices[row.value]=i
-                local hidden=self.model.kemHiddenDirty and self.model.kemHiddenDirty[i] or false
-                local visual=self.model.kemVisualDirty and self.model.kemVisualDirty[i]
-                if row.kemHiddenDirty~=hidden or row.kemVisualDirty~=visual or self.model.kemRejectedIndex==i then
-                    row.rendered=false;row.renderText=nil;row.kemHiddenDirty=hidden
-                    row.kemVisualDirty=visual
+                local hidden=self.model.mcHiddenDirty and self.model.mcHiddenDirty[i] or false
+                local visual=self.model.mcVisualDirty and self.model.mcVisualDirty[i]
+                if row.mcHiddenDirty~=hidden or row.mcVisualDirty~=visual or self.model.mcRejectedIndex==i then
+                    row.rendered=false;row.renderText=nil;row.mcHiddenDirty=hidden
+                    row.mcVisualDirty=visual
                 end
             end
-            self.model.kemRejectedIndex=nil
+            self.model.mcRejectedIndex=nil
             return refresh(self,...)
         end
         return ui
     end
-    choices.kemMappedVersion=M.version;controls.kemMappedVersion=M.version
+    choices.mcMappedVersion=M.version;controls.mcMappedVersion=M.version
     return true
 end
 return M

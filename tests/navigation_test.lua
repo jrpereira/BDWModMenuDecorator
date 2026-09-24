@@ -7,7 +7,7 @@ local manifest=[[
 [Mod]
 Id=NavigationTest
 [Category.Options]
-kemHeading=0
+mcHeading=0
 [Setting.View]
 Id=View
 Type=picker
@@ -16,8 +16,8 @@ Group=Options
 PresetValues=0|1|2
 PresetLabels=More|Primary|Secondary
 Default=0
-kemNavigation=1
-kemType=tab
+mcNavigation=1
+mcType=tab
 [Setting.Real]
 Id=Real
 Type=integer
@@ -34,7 +34,7 @@ VisibleWhen=View
 VisibleValues=1
 ]]
 local items=Choices.parse(manifest)
-assert(#items==2 and items[1].kemNavigation and not items[2].kemNavigation)
+assert(#items==2 and items[1].mcNavigation and not items[2].mcNavigation)
 local path='/tmp/kem-navigation-test/config.ini'
 local files={[path]='[Settings]\nReal=4\n'}
 Choices.fs={
@@ -69,7 +69,7 @@ assert(model.pending[1]==1 and model.pending[2]==5 and not model:dirty())
 local unsupported=manifest:gsub('%[Setting.View%]',
     '[Setting.Ignored]\nType=unsupported\nId=Ignored\n[Setting.View]')
 local withIgnored=Choices.parse(unsupported)
-assert(#withIgnored==2 and withIgnored[1].kemNavigation,
+assert(#withIgnored==2 and withIgnored[1].mcNavigation,
     'Unsupported settings ignored by DMM must not break navigation parsing')
 local plan=assert(InitConfig.plan(provider,manifest,Choices,Choices.fs,items))
 assert(not plan.content:find('View=',1,true),'config initialization must omit navigation')

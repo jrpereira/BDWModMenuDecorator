@@ -18,7 +18,6 @@ return {
         assert(type(dmm)=='table' and dmm.version==1,'unsupported DMM extension API')
         assert(type(dmm.choices)=='table' and type(dmm.controls)=='table' and type(dmm.pages)=='table',
             'DMM extension modules unavailable')
-        local legacy=module('legacy_metadata')
         local navigation=module('navigation')
         local mapped=module('mapped_presets')
         local presentation=module('presentation')
@@ -33,7 +32,6 @@ return {
         mapped.install(dmm.choices,dmm.controls)
         presentation.install(dmm.choices,dmm.controls,dmm.pages)
         config.install(dmm.choices)
-        legacy.install(dmm.choices)
         local publisher=lifecycle.publisher(function(event,detail)
             print('[ModCoreSettings] '..event..' '..tostring(detail or '')..'\n')
         end)

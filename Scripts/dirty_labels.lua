@@ -170,7 +170,7 @@ function M.new(log)
             local byRow={}
             for _,row in ipairs(rows) do
                 local shell=row.overlay or row.shell
-                if not (row.dmmSetting and row.dmmSetting.kemHeader
+                if not (row.dmmSetting and row.dmmSetting.mcHeader
                     and type(row.providerId)=='string'
                     and row.providerId:match('^ModCoreTemplates%.module%.'))
                     and Discovery.valid(shell) and Discovery.valid(row.labelWidget)

@@ -52,11 +52,11 @@ function M.install(log)
     local function bindPage(state,rows,providerId,byId)
         for _,row in ipairs(rows) do
             local metadata=row.dmmSetting
-            local modeRow=metadata and metadata.kemPairId and byId[metadata.kemPairId]
+            local modeRow=metadata and metadata.mcPairId and byId[metadata.mcPairId]
             local modeValues=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.values
-            local descriptor=metadata and metadata.kemKeybind and metadata.kind=='slider' and {
+            local descriptor=metadata and metadata.mcKeybind and metadata.kind=='slider' and {
                 providerId=providerId,settingId=metadata.id,minimum=metadata.minimum,maximum=metadata.maximum,
-                fixedMode=metadata.kemFixedMode,modeId=modeRow and metadata.kemPairId or nil,
+                fixedMode=metadata.mcFixedMode,modeId=modeRow and metadata.mcPairId or nil,
                 modeOptions=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.labels or nil,
                 modeValues=modeValues,disabledMode=modeValues and modeValues[3]==-1 and -1 or nil,
             } or nil
@@ -111,7 +111,7 @@ function M.install(log)
             -- One event-driven discovery, after DMM finishes its synchronous row build.
             local snapshots={}
             if selections and #selections>0 then
-                -- SetActiveWidgetIndex gives us the exact selected children. In
+                -- Lifecycle events give us the exact selected children. In
                 -- the usual DMM flow one is the provider ScrollBox and the other
                 -- is the surrounding detail page. Try only those objects.
                 for _,selection in ipairs(selections) do

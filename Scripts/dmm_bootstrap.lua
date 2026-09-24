@@ -55,6 +55,16 @@ local supported={
     ['controls.lua']={length=24704,a=45341,b=45889,h=1849011022},
     ['pages.lua']={length=11799,a=44920,b=14770,h=2559550986},
 }
+local lazySupported={
+    ['main.lua']={length=39593,a=23822,b=19576,h=2394120226},
+    ['controls.lua']={length=25850,a=1045,b=60916,h=3531278216},
+    ['pages.lua']={length=14193,a=39320,b=23532,h=3948583133},
+}
+local lazyPatched={
+    ['main.lua']={length=40030,a=63298,b=25842,h=2857163126},
+    ['controls.lua']={length=26452,a=53465,b=30290,h=614885388},
+    ['pages.lua']={length=14211,a=41107,b=47065,h=2704855608},
+}
 local patched={
     ['main.lua']={length=39049,a=47247,b=18334,h=1315845458},
     ['controls.lua']={length=24993,a=4755,b=1545,h=846892309},
@@ -122,6 +132,36 @@ local function patchPages(content)
 end
 
 local patchers={['main.lua']=patchMain,['controls.lua']=patchControls,['pages.lua']=patchPages}
+
+-- The later 1.0.7 build uses lazy providers and a recycled browser row pool.
+-- Match exact reviewed bytes; never patch an arbitrary file by anchors alone.
+local function patchLazyMain(content)
+    content=replaceOnce(content,crlf('local function valid(object)\n'),crlf(
+        '-- MC_DMM_LIFECYCLE_PATCH=2\n'
+        ..'local ExtensionEvents = require("extension_events")\n'
+        ..'local extensionEvents = ExtensionEvents.new(log)\n'
+        ..'require("extensions").load(IterateGameDirectories,{version=1,choices=require("choices"),controls=require("controls"),pages=Pages,events=extensionEvents},log)\n\n'
+        ..'local function valid(object)\n'),'lazy extension API')
+    content=replaceOnce(content,crlf('    s.phase = "closing"\n    clearPresses()'),
+        crlf('    s.phase = "closing"\n    extensionEvents:emit("hostClosing",{host=s.host,tree=valid(s.host) and s.host.WidgetTree or nil,pc=s.pc})\n    clearPresses()'),'lazy host close')
+    return replaceOnce(content,
+        crlf('        highlight=function(widget,alpha,background) s.fx:highlight(widget,alpha,background) end,\n    })'),
+        crlf('        highlight=function(widget,alpha,background) s.fx:highlight(widget,alpha,background) end,\n        events=extensionEvents,\n    })'),'lazy page event API')
+end
+local function patchLazyControls(content)
+    content=patchControls(content)
+    content=replaceOnce(content,crlf('                local old=ui.panels[oldest]\n'),
+        crlf('                local old=ui.panels[oldest]\n                if api.releasePanel then api.releasePanel(old,providers[oldest]) end\n'),'lazy panel release')
+    content=replaceOnce(content,crlf('        self.panels[index].scroll:ScrollToStart()\n        self:refresh()\n'),
+        crlf("        self.panels[index].scroll:ScrollToStart()\n        self:refresh()\n        if api.events then api.events:emit('providerRefreshed',{tree=tree,provider=providers[index],panel=self.panels[index],pc=api.pc}) end\n"),'lazy page activation')
+    return replaceOnce(content,crlf('    function ui:hide()\n'),
+        crlf("    function ui:hide()\n        if api.events then api.events:emit('hostClosing',{tree=tree,pc=api.pc}) end\n"),'lazy interaction close')
+end
+local function patchLazyPages(content)
+    return replaceOnce(content,crlf('        status=controlStatus,t=T,applied=api.applied,\n'),
+        crlf('        status=controlStatus,t=T,applied=api.applied,events=api.events,\n'),'lazy controls event API')
+end
+local lazyPatchers={['main.lua']=patchLazyMain,['controls.lua']=patchLazyControls,['pages.lua']=patchLazyPages}
 
 local function child(node,wanted)
     if type(node)~='table' then return nil end
@@ -203,6 +243,32 @@ local function readRequired(env,path)
     return content
 end
 
+local function selectProfile(env,paths)
+    if env.supported then return end -- Explicit fixture/profile supplied by caller.
+    local profiles={
+        {name='1.0.7 lazy pages',supported=lazySupported,patched=lazyPatched,
+            patchers=lazyPatchers,backupSuffix='.mc-lazy-1.0.7.bak'},
+        {name='1.0.7',supported=supported,patched=patched,patchers=patchers,backupSuffix=BACKUP_SUFFIX},
+    }
+    for _,profile in ipairs(profiles) do
+        local matched=next(profile.supported)~=nil
+        for name,expected in pairs(profile.supported) do
+            local content=env.read(paths[name])
+            if content then
+                if not sameSignature(content,expected) and not sameSignature(content,profile.patched[name]) then matched=false end
+            else
+                local backup=env.read(paths[name]..profile.backupSuffix)
+                if not backup or not sameSignature(backup,expected) then matched=false end
+            end
+        end
+        if matched then
+            for key,value in pairs(profile) do env[key]=value end
+            return
+        end
+    end
+    error('unsupported DawnwalkerModMenu file set; no reviewed lifecycle profile matches')
+end
+
 local function recoverInterrupted(env,paths)
     local interrupted=false
     for _,path in pairs(paths) do if env.read(path..NEW_SUFFIX)~=nil then interrupted=true;break end end
@@ -210,7 +276,7 @@ local function recoverInterrupted(env,paths)
     for name,expected in pairs(env.supported or supported) do
         local path=paths[name]
         if env.read(path)==nil then
-            local backup=readRequired(env,path..BACKUP_SUFFIX)
+            local backup=readRequired(env,path..(env.backupSuffix or BACKUP_SUFFIX))
             assert(sameSignature(backup,expected),'interrupted patch has no verified baseline for '..name)
             assert(env.write(path,backup),'could not restore interrupted '..name)
             assert(env.read(path)==backup,'interrupted restore verification failed for '..name)
@@ -242,7 +308,7 @@ local function desiredFiles(env,paths)
             assert(sameSignature(desired[name],completed[name]),'internal patch signature mismatch for '..name)
         elseif sameSignature(content,completed[name]) then
             desired[name]=content
-            local backup=env.read(paths[name]..BACKUP_SUFFIX)
+            local backup=env.read(paths[name]..(env.backupSuffix or BACKUP_SUFFIX))
             assert(backup and sameSignature(backup,expected),'supported backup missing for patched '..name)
             baseline[name]=backup
         else
@@ -298,7 +364,7 @@ local function patch(env,paths,current,baseline,desired,payload)
     local ok,err=pcall(function()
         -- Every replacement is complete and verified before any live file moves.
         for name,content in pairs(baseline) do
-            local backup=paths[name]..BACKUP_SUFFIX
+            local backup=paths[name]..(env.backupSuffix or BACKUP_SUFFIX)
             local existing=env.read(backup)
             if existing then assert(existing==content,'backup does not match supported '..name)
             else
@@ -354,6 +420,8 @@ function M.run(log,initialize,overrides)
     local located,paths,locateError=pcall(locate,env,gameDirectories)
     if not located then log('DMM_REQUIRED',tostring(paths));return false end
     if not paths then log('DMM_REQUIRED',locateError);return false end
+    local configured,profileError=pcall(selectProfile,env,paths)
+    if not configured then log('DMM_INCOMPATIBLE',tostring(profileError));return false end
     local recovered,recoveryError=pcall(recoverInterrupted,env,paths)
     if not recovered then log('DMM_PATCH_FAILED',tostring(recoveryError));return false end
     local ok,state,current,baseline,desired,payload=pcall(desiredFiles,env,paths)
@@ -362,7 +430,7 @@ function M.run(log,initialize,overrides)
     if changed then
         local patched,patchError=patch(env,paths,current,baseline,desired,payload)
         if not patched then log('DMM_PATCH_FAILED',patchError);return false end
-        log('DMM_PATCHED','DawnwalkerModMenu 1.0.7 lifecycle API installed')
+        log('DMM_PATCHED','DawnwalkerModMenu '..(env.name or '1.0.7')..' lifecycle API installed')
     end
     if ready() then return true end
     if finished then return false end
@@ -387,6 +455,6 @@ function M.run(log,initialize,overrides)
     return 'waiting'
 end
 
-M._test={signature=signature,patchers=patchers,payload=EVENT_PAYLOAD,backupSuffix=BACKUP_SUFFIX,
+M._test={signature=signature,patchers=patchers,lazyPatchers=lazyPatchers,selectProfile=selectProfile,payload=EVENT_PAYLOAD,backupSuffix=BACKUP_SUFFIX,
     newSuffix=NEW_SUFFIX,readyKey=READY,claimKey=CLAIM}
 return M

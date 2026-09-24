@@ -71,7 +71,7 @@ function M.defaultSources(manifest,settings)
     local rules,names={},{}
     for _,setting in ipairs(settings) do
         if setting.id then byId[setting.id]=setting end
-        setting.kemDefaultFrom=nil;setting.kemDefaultMap=nil;setting.kemDefaultRules=nil
+        setting.mcDefaultFrom=nil;setting.mcDefaultMap=nil;setting.mcDefaultRules=nil
     end
     local function finish()
         if not current then return end
@@ -86,7 +86,7 @@ function M.defaultSources(manifest,settings)
             if current.DefaultFrom then
                 validateName(current.DefaultFrom,'DefaultFrom')
                 assert(setting.section,'DefaultFrom requires explicit ConfigSection')
-                setting.kemDefaultFrom=current.DefaultFrom
+                setting.mcDefaultFrom=current.DefaultFrom
                 if current.DefaultFromMap then
                     local map={}
                     for entry in (current.DefaultFromMap..';'):gmatch('(.-);') do
@@ -95,7 +95,7 @@ function M.defaultSources(manifest,settings)
                         assert(map[source]==nil,'duplicate DefaultFromMap source')
                         map[source]=number(b,'DefaultFromMap destination')
                     end
-                    setting.kemDefaultMap=map
+                    setting.mcDefaultMap=map
                 end
             else
                 assert(not current.DefaultFromMap,'DefaultFromMap requires DefaultFrom')
@@ -124,7 +124,7 @@ function M.defaultSources(manifest,settings)
     for _,raw in ipairs(rules) do
         local setting=assert(byId[raw.Target],'unknown DefaultRule target')
         assert(setting.section,'DefaultRule requires explicit ConfigSection')
-        assert(not setting.kemDefaultFrom,'DefaultRule and DefaultFrom cannot share a target')
+        assert(not setting.mcDefaultFrom,'DefaultRule and DefaultFrom cannot share a target')
         local fields={rule=true,Target=true,SourceSection=true,SourceKey=true,SourceDefault=true,WhenAbsent=true,WhenZero=true}
         for field in pairs(raw) do assert(fields[field],'unknown DefaultRule field '..field) end
         validateName(raw.SourceSection,'source section');validateName(raw.SourceKey,'source key')
@@ -132,9 +132,9 @@ function M.defaultSources(manifest,settings)
         if raw.SourceDefault then rule.default=number(raw.SourceDefault,'SourceDefault') end
         if raw.WhenAbsent then rule.absent=reference(raw.WhenAbsent,'WhenAbsent') end
         if raw.WhenZero then rule.zero=reference(raw.WhenZero,'WhenZero') end
-        setting.kemDefaultRules=setting.kemDefaultRules or {}
-        assert(#setting.kemDefaultRules<32,'too many DefaultRules per setting')
-        table.insert(setting.kemDefaultRules,rule)
+        setting.mcDefaultRules=setting.mcDefaultRules or {}
+        assert(#setting.mcDefaultRules<32,'too many DefaultRules per setting')
+        table.insert(setting.mcDefaultRules,rule)
     end
 end
 
@@ -188,16 +188,16 @@ function M.merge(original,settings,choices)
         targets[target]=true
         local default=setting.default
         local migrated=false
-        if existing[target]==nil and setting.kemDefaultFrom then
-            local source=existing[targetSection..'\0'..setting.kemDefaultFrom]
+        if existing[target]==nil and setting.mcDefaultFrom then
+            local source=existing[targetSection..'\0'..setting.mcDefaultFrom]
             if source~=nil then
                 default=number(source,'DefaultFrom source')
-                if setting.kemDefaultMap then default=assert(setting.kemDefaultMap[default],'unmapped DefaultFrom value') end
+                if setting.mcDefaultMap then default=assert(setting.mcDefaultMap[default],'unmapped DefaultFrom value') end
                 migrated=true
             end
         end
         if existing[target]==nil then
-            for _,rule in ipairs(setting.kemDefaultRules or {}) do
+            for _,rule in ipairs(setting.mcDefaultRules or {}) do
                 local matches=not rule.absent or existing[rule.absent]==nil
                 if matches and rule.zero then
                     local value=existing[rule.zero]
@@ -303,7 +303,7 @@ function M.plan(provider,manifest,choices,fs,settings)
     settings=settings or choices.parse(manifest:gsub('^\239\187\191',''))
     local persistent={}
     for _,setting in ipairs(settings) do
-        if not setting.kemNavigation then persistent[#persistent+1]=setting end
+        if not setting.mcNavigation then persistent[#persistent+1]=setting end
     end
     settings=persistent
     M.defaultSources(manifest,settings)
@@ -330,14 +330,14 @@ end
 -- Runs in DMM's own Lua state. Keep migration failures on DMM's existing error
 -- path, where set/reset/apply are disabled, instead of opening writable defaults.
 function M.install(choices,fs)
-    if choices.kemConfigVersion then return false end
+    if choices.mcConfigVersion then return false end
     fs=fs or M.fs
     local parse,open=choices.parse,choices.open
     local planning=false
     choices.parse=function(content)
         local settings=parse(content)
         if settings[1] and (content:match('DefaultFrom%s*=') or content:match('DefaultFromMap%s*=') or content:match('%[DefaultRule%.')) then
-            settings[1].kemMigrationDeclared=true
+            settings[1].mcMigrationDeclared=true
         end
         return settings
     end
@@ -358,7 +358,7 @@ function M.install(choices,fs)
         if not ok then model.error='Configuration initialization failed; settings unavailable: '..tostring(err) end
         return model
     end
-    choices.kemConfigVersion=1
+    choices.mcConfigVersion=1
     return true
 end
 return M

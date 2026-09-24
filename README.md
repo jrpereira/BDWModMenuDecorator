@@ -1,57 +1,40 @@
 # ModCore Settings
 
-ModCoreSettings (KEM) is a developer tool that extends Dawnwalker Mod Menu with key-binding controls.
+Add key-binding pickers, Tap/Hold selectors, presets, and conditional settings
+through declarative metadata, with Apply, Reset, and persistence support.
+Compatible with Dawnwalker Mod Menu.
 
-Keep using Mod Menu's normal configuration system. Add a little metadata, and ModCoreSettings turns an integer setting into a key picker, optionally combining it with a Tap/Hold selector. Mod Menu continues handling Apply, Reset, and saving.
-
-The source also serves as a practical example of extending existing Unreal UI: finding existing controls, adding widgets to their owning page, and connecting custom presentation to the original settings system.
+Define presentation in your provider's settings manifest. Your mod interprets
+the saved values and implements input behavior; Settings supplies the controls.
+Less widget plumbing, more actual mod.
 
 ## Features
 
-- Upgrades Dawnwalker Mod Menu integer settings into interactive key-binding pickers.
-- Combines key bindings with an optional Tap/Hold control that changes mode on each click.
-- Expands mapped presets into their target keys and modes; manual target edits select Custom.
-- Shows changed settings with a left-hand star and italic label. Preset selection establishes a visual baseline; subsequent edits mark only the targets changed by the user.
-- Renders pickers as right-aligned tabs and applies six typography levels. On generated module pages, a level-one setting shares the mod page title row above the divider.
-- Supports conditional group help, value-dependent labels and category ordering while preserving existing setting IDs.
-- Supports metadata-based integration through `mod_settings.ini`—no registration code required.
-- Reads existing `amm*` presentation metadata from installed mods during migration to `kem*`; explicit `kem*` fields take precedence.
-- Preserves Mod Menu's Apply, Reset, and configuration-saving behavior.
-- Adds separate hover feedback for key and mode pickers, plus highlighting during key capture.
-- Supports Escape cancellation and displays unbound keys.
-- Captures left/right Shift, Control, Alt and Windows keys individually; modifier chords remain unsupported.
-- Keeps decorations attached to their owning rows and recreates them when pages rebuild.
-- Uses menu-scoped updates without a permanent gameplay polling loop.
-- Provides example configurations and source code for learning how to extend existing Unreal UI.
-- Bundles the `menu.fixes` template at `Scripts/fixes.lua` for registration by ModCoreTemplates.
-- Pairs with UE4SSLuaEventBridge for implementing Enhanced Input and Tap/Hold behavior.
+- Key capture with distinct left/right modifiers and Escape cancellation.
+- Paired key/mode controls, mapped presets, and dirty-setting indicators.
+- Navigation tabs, conditional labels, grouped headings, and typography levels.
+- Missing-default initialization that preserves existing user values.
+- Durable Apply notifications for consumers.
 
-## Known Issues / Improvements
+## Requirements and installation
 
-- Active menu updates use 50 ms polling; updates stop when the menu closes or no usable controls remain.
-- Depends on Mod Menu's structure: changes to its widget layout or lifecycle can break decoration.
-- The lifecycle bootstrap currently supports Dawnwalker Mod Menu 1.0.7; restart the game after it installs or updates the callback patch.
+Use UE4SS with Lua 5.4 and Dawnwalker Mod Menu. The lifecycle adapter targets
+DMM 1.0.7. Install Settings under `Mods/_ModCore_Settings`, enable it through
+UE4SS or your mod manager, and disable the old `AdaptiveModMenu` installation.
+Restart after installation or metadata changes.
 
-## Documentation
-
-See the [documentation on GitHub](https://github.com/jrpereira/ModCoreSettings/tree/main/docs) and the [developer integration guide](https://github.com/jrpereira/ModCoreSettings/blob/main/docs/DEVELOPERS.md).
-
-## Installation
-
-Install the package as `Mods/_ModCore_Settings`, then enable it through your mod
-manager or UE4SS configuration. Remove the old `Mods/AdaptiveModMenu` folder
-before starting the game. The archive does not create `enabled.txt`.
-Restart the game after installing or updating it.
+UE4SSLuaEventBridge is not required for this module. An input provider may
+require it separately.
 
 ## Add a key-binding control
 
-In your mod's `mod_settings.ini`, define an integer setting and add `kemType = keybind`:
+In your mod's `mod_settings.ini`, define an integer setting and add `mcType = keybind`:
 
 ```ini
 [Setting.MyAction]
 Id = MyAction
 Type = integer
-kemType = keybind
+mcType = keybind
 Label = My action
 Group = Controls
 ConfigFile = config.ini
@@ -65,38 +48,15 @@ Default = 75
 
 The stored value is a Windows virtual-key code. In this example, `75` means K; `0` means unbound.
 
-## Add an optional mode selector
+## Limits
 
-Add a tab picker and point `Pair` at the key setting. The picker owns the composite row and its visible label:
+- Key values are Windows virtual-key codes; modifier chords and gamepad capture
+  are unsupported. Delete-to-clear is not implemented.
+- Active control synchronization runs every 50 ms while the menu scope is usable.
+- DMM widget or lifecycle changes can require compatibility updates.
 
-```ini
-[Setting.MyActionMode]
-Id = MyActionMode
-Type = picker
-kemType = tab
-Pair = MyAction
-Label = My action
-Group = Controls
-ConfigFile = config.ini
-ConfigSection = Bindings
-ConfigKey = MyActionMode
-PresetValues = 0|3|-1
-PresetLabels = Tap|Hold|Default
-Default = -1
-```
+## Documentation
 
-Keep both settings in the same group. If DMM hides `MyAction`, KEM hides only the contributed key component; the mode row, its label and its tabs remain visible.
-
-That's it—magic! The key picker and Tap/Hold selector appear together. No registration code is required.
-
-Your mod still interprets the values. ModCoreSettings provides the GUI upgrades, not the input behavior.
-
-It also pairs well with [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge), which exposes Unreal's Enhanced Input to Lua, including support for Tap/Hold bindings.
-
-## Developer links
-
-- [Integration guide](https://github.com/jrpereira/ModCoreSettings/blob/main/docs/DEVELOPERS.md)
-- [Complete example provider](https://github.com/jrpereira/ModCoreSettings/tree/main/examples/ExampleMod)
-- [UI implementation](https://github.com/jrpereira/ModCoreSettings/tree/main/Scripts)
-- [QuickslotsForever](https://github.com/jrpereira/BDWQuickslotsForever)
-- [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge)
+- [Developer guide](docs/DEVELOPERS.md): integration contracts and examples.
+- [Build guide](docs/BUILD.md): source preparation and tests.
+- [Changelog](CHANGELOG.md): changes by version.

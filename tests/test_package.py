@@ -28,7 +28,7 @@ class PackageTests(unittest.TestCase):
                 self.assertIn(pack.MODULE + '/Scripts/main.lua', names)
                 self.assertNotIn(pack.MODULE + '/enabled.txt', names)
                 self.assertNotIn(pack.MODULE + '/Scripts/temporary_probe.lua', names)
-                self.assertEqual(len([n for n in names if '/Scripts/' in n]), 17)
+                self.assertEqual(len([n for n in names if '/Scripts/' in n]), 16)
                 self.assertIn('_ModCore_Settings/Scripts/dmm_extension.lua', names)
                 self.assertIn('_ModCore_Settings/Scripts/navigation.lua', names)
                 self.assertFalse(any('/dlls/' in n or n.lower().endswith('.dll') for n in names))

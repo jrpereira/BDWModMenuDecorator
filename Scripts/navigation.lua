@@ -7,16 +7,16 @@ function M.parse(content,items)
     local byId={}
     for _,item in ipairs(items) do byId[item.id]=item end
     local function finish()
-        if not current or current.kemNavigation==nil then return end
-        assert(current.kemNavigation=='1','kemNavigation must be 1')
+        if not current or current.mcNavigation==nil then return end
+        assert(current.mcNavigation=='1','mcNavigation must be 1')
         local item=assert(byId[current.Id or ('setting_'..sections)],
             'navigation picker setting unavailable')
-        assert(item.kind=='picker','kemNavigation requires a picker')
+        assert(item.kind=='picker','mcNavigation requires a picker')
         assert(not item.targets and not current.MappedPresetTargets,
             'navigation picker cannot own preset targets')
         marked=marked+1
         assert(marked<=1,'only one navigation picker per provider')
-        item.kemNavigation=true
+        item.mcNavigation=true
     end
     for line in (content..'\n'):gmatch('([^\n]*)\n') do
         local section=trim(line):match('^%[([^%]]+)%]$')
@@ -36,7 +36,7 @@ end
 function M.open(provider,open)
     local index
     for i,setting in ipairs(provider.choices or {}) do
-        if setting.kemNavigation then index=i;break end
+        if setting.mcNavigation then index=i;break end
     end
     if not index then return open(provider) end
     local items={}
@@ -93,11 +93,11 @@ function M.open(provider,open)
 end
 
 function M.install(choices)
-    if choices.kemNavigationVersion then return false end
+    if choices.mcNavigationVersion then return false end
     local parse,open=choices.parse,choices.open
     choices.parse=function(content) return M.parse(content,parse(content)) end
     choices.open=function(provider) return M.open(provider,open) end
-    choices.kemNavigationVersion=M.version
+    choices.mcNavigationVersion=M.version
     return true
 end
 return M

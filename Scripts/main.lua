@@ -1,4 +1,4 @@
-local VERSION='0.3.0'
+local VERSION='0.3.1'
 local Bootstrap=require('dmm_bootstrap')
 local function log(event,detail)
     if event=='SELECTOR_DISABLED' or event=='DMM_REQUIRED' or event=='DMM_INCOMPATIBLE'

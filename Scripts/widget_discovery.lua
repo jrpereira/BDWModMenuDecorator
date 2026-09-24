@@ -164,12 +164,12 @@ function M.rowsFromScroll(scroll)
                         if count and count>=0 and count<=64 and #fields==17+count*2 then
                             local setting={id=decode(fields[4]),kind=fields[5],minimum=tonumber(fields[6]),
                                 maximum=tonumber(fields[7]),step=tonumber(fields[8]),decimals=tonumber(fields[9]),
-                                prefix=decode(fields[10]),suffix=decode(fields[11]),kemKeybind=fields[12]=='1',
-                                kemFixedMode=decode(fields[13]),kemPairId=decode(fields[14]),
-                                kemTabsWidth=tonumber(fields[15]),kemPairTargetId=decode(fields[16]),values={},labels={}}
-                            if setting.kemFixedMode=='' then setting.kemFixedMode=nil end
-                            if setting.kemPairId=='' then setting.kemPairId=nil end
-                            if setting.kemPairTargetId=='' then setting.kemPairTargetId=nil end
+                                prefix=decode(fields[10]),suffix=decode(fields[11]),mcKeybind=fields[12]=='1',
+                                mcFixedMode=decode(fields[13]),mcPairId=decode(fields[14]),
+                                mcTabsWidth=tonumber(fields[15]),mcPairTargetId=decode(fields[16]),values={},labels={}}
+                            if setting.mcFixedMode=='' then setting.mcFixedMode=nil end
+                            if setting.mcPairId=='' then setting.mcPairId=nil end
+                            if setting.mcPairTargetId=='' then setting.mcPairTargetId=nil end
                             for item=1,count do setting.values[item]=assert(tonumber(decode(fields[17+item])),'invalid setting identity value') end
                             for item=1,count do setting.labels[item]=decode(fields[17+count+item]) end
                             row.settingIndex=tonumber(fields[2]);row.identityProviderId=decode(fields[3]);row.settingId=setting.id

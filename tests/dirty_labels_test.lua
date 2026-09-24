@@ -66,9 +66,9 @@ end
 local key,mode,toggle=row('Ability','82',slider),row('Mode','Tap',picker),row('Enabled','On',{kind='toggle',labels={'Off','On'}})
 local literal=row('* Literal label','Option *',{kind='picker',labels={'Option *','Other'}})
 local fallback=row('No italic face','1',slider);fallback.labelWidget.Font.FontObject={}
-local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},kemHeader=true})
+local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},mcHeader=true})
 header.providerId='ModCoreTemplates.module.ActionFandango'
-local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},kemHeader=true})
+local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},mcHeader=true})
 template.providerId='ModCoreTemplates'
 local all={key,mode,toggle,literal,fallback,header,template}
 local function star(r)

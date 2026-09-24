@@ -1,0 +1,11 @@
+{
+  "manifest_version": 1,
+  "id": "ModCoreSettings",
+  "name": "ModCore Settings",
+  "description": "Add key-binding pickers, Tap/Hold selectors, presets, and conditional settings through declarative metadata, with Apply, Reset, and persistence support. Compatible with Dawnwalker Mod Menu.",
+  "version_source": "Scripts/main.lua",
+  "links": {
+    "source": "https://github.com/jrpereira/ModCoreSettings",
+    "nexus": "https://www.nexusmods.com/thebloodofdawnwalker/mods/590"
+  }
+}

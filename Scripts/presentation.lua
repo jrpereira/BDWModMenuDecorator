@@ -2,9 +2,6 @@
 local M={version=1}
 local pairHostMarkerPrefix='KEM_PAIR_HOST_1\n'
 local dirtySignalPrefix='KEM_VALUE_DIRTY_1\n'
-local function modulePage(provider)
-    return type(provider.id)=='string' and provider.id:match('^ModCoreTemplates%.module%.')~=nil
-end
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function identityText(value)
     return tostring(value):gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')
@@ -15,9 +12,9 @@ local function settingIdentity(index,provider,setting)
     local fields={'KEM_SETTING_3',tostring(index),identityText(provider.id),identityText(setting.id),
         setting.kind or '',tostring(setting.minimum or ''),tostring(setting.maximum or ''),
         tostring(setting.step or ''),tostring(setting.decimals or ''),identityText(setting.prefix or ''),
-        identityText(setting.suffix or ''),setting.kemKeybind and '1' or '0',
-        identityText(setting.kemFixedMode or ''),identityText(setting.kemPairId or ''),
-        tostring(setting.kemTabsWidth or ''),identityText(setting.kemPairTargetId or ''),tostring(#values)}
+        identityText(setting.suffix or ''),setting.mcKeybind and '1' or '0',
+        identityText(setting.mcFixedMode or ''),identityText(setting.mcPairId or ''),
+        tostring(setting.mcTabsWidth or ''),identityText(setting.mcPairTargetId or ''),tostring(#values)}
     for _,value in ipairs(values) do fields[#fields+1]=identityText(value) end
     for _,label in ipairs(labels) do fields[#fields+1]=identityText(label) end
     local result=table.concat(fields,'\n')
@@ -41,11 +38,11 @@ function M.parse(content,items)
     local byId,groups,parents,seen,count={},{},{},{},0
     for _,s in ipairs(items) do
         byId[s.id]=s
-        s.kemPairId,s.kemPairIndex,s.kemPairTargetIndex=nil,nil,nil
+        s.mcPairId,s.mcPairIndex,s.mcPairTargetIndex=nil,nil,nil
     end
     local function level(value)
         if value==nil then return nil end
-        return assert(tonumber(value:match('^[0-6]$')),'kemLevel must be an integer from 0 through 6')
+        return assert(tonumber(value:match('^[0-6]$')),'mcLevel must be an integer from 0 through 6')
     end
     local function flag(value,name)
         if value==nil then return nil end
@@ -53,17 +50,17 @@ function M.parse(content,items)
         return value=='1'
     end
     local function labelRule(r)
-        if not r.kemLabelWhen and not r.kemLabels then return nil end
-        local source=assert(byId[r.kemLabelWhen],'unknown kemLabelWhen')
-        assert(source.kind~='slider','kemLabelWhen requires a picker or toggle')
+        if not r.mcLabelWhen and not r.mcLabels then return nil end
+        local source=assert(byId[r.mcLabelWhen],'unknown mcLabelWhen')
+        assert(source.kind~='slider','mcLabelWhen requires a picker or toggle')
         local result={source=source,values={}}
-        for entry in ((r.kemLabels or '')..';'):gmatch('(.-);') do
+        for entry in ((r.mcLabels or '')..';'):gmatch('(.-);') do
             local value,label=entry:match('^%s*([^:]+):(.+)$')
             value=tonumber(value)
-            assert(value and label and not result.values[value],'invalid kemLabels')
+            assert(value and label and not result.values[value],'invalid mcLabels')
             local valid=false
             for _,v in ipairs(source.values) do if v==value then valid=true end end
-            assert(valid,'kemLabels value outside source choices')
+            assert(valid,'mcLabels value outside source choices')
             result.values[value]=trim(label)
         end
         return result
@@ -71,25 +68,25 @@ function M.parse(content,items)
     for _,r in ipairs(sections) do
         local group=r.name:match('^Category%.(.+)$')
         if group then
-            local order=labelRule({kemLabelWhen=r.kemOrderWhen,kemLabels=r.kemOrders})
+            local order=labelRule({mcLabelWhen=r.mcOrderWhen,mcLabels=r.mcOrders})
             if order then
                 for value,rank in pairs(order.values) do
                     rank=tonumber(rank)
-                    assert(rank and rank==rank and math.abs(rank)<=1000000,'invalid kemOrders rank')
+                    assert(rank and rank==rank and math.abs(rank)<=1000000,'invalid mcOrders rank')
                     order.values[value]=rank
                 end
             end
             local parent
-            if r.kemParent~=nil then
-                local label=trim(r.kemParent)
-                assert(label~='','kemParent requires a non-empty label')
-                local font=level(r.kemParentLevel) or 2
+            if r.mcParent~=nil then
+                local label=trim(r.mcParent)
+                assert(label~='','mcParent requires a non-empty label')
+                local font=level(r.mcParentLevel) or 2
                 parent=parents[label]
-                if parent then assert(parent.font==font,'categories sharing kemParent must use the same kemParentLevel')
+                if parent then assert(parent.font==font,'categories sharing mcParent must use the same mcParentLevel')
                 else parent={key=label,label=label,font=font};parents[label]=parent end
-            elseif r.kemParentLevel~=nil then error('kemParentLevel requires kemParent') end
-            groups[group]={font=level(r.kemLevel),help=r.kemHelp,labelRule=labelRule(r),order=order,parent=parent,
-                heading=flag(r.kemHeading,'kemHeading')~=false}
+            elseif r.mcParentLevel~=nil then error('mcParentLevel requires mcParent') end
+            groups[group]={font=level(r.mcLevel),help=r.mcHelp,labelRule=labelRule(r),order=order,parent=parent,
+                heading=flag(r.mcHeading,'mcHeading')~=false}
         end
         if r.name=='Setting' or r.name:match('^Setting%.') then
             count=count+1
@@ -97,55 +94,55 @@ function M.parse(content,items)
             local s=byId[id]
             if s and not seen[id] then
                 seen[id]=true
-                s.kemFont=level(r.kemLevel)
-                if r.kemMode~=nil then
-                    assert(r.kemMode=='Tap' or r.kemMode=='Hold','kemMode must be Tap or Hold')
-                    assert(r.kemType=='keybind' and s.kind=='slider','kemMode requires a keybind setting')
-                    s.kemFixedMode=r.kemMode
+                s.mcFont=level(r.mcLevel)
+                if r.mcMode~=nil then
+                    assert(r.mcMode=='Tap' or r.mcMode=='Hold','mcMode must be Tap or Hold')
+                    assert(r.mcType=='keybind' and s.kind=='slider','mcMode requires a keybind setting')
+                    s.mcFixedMode=r.mcMode
                 end
-                s.kemLabelRule=labelRule(r)
-                s.kemTabs,s.kemTabsWidth,s.kemHeader,s.kemPairTargetId=nil,nil,nil,nil
-                local hasLevel=r.kemLevel~=nil
-                local decoration=r.kemType
-                if decoration~=nil then assert(decoration=='tab' or decoration=='keybind','kemType must be tab or keybind') end
-                s.kemKeybind=decoration=='keybind'
+                s.mcLabelRule=labelRule(r)
+                s.mcTabs,s.mcTabsWidth,s.mcHeader,s.mcPairTargetId=nil,nil,nil,nil
+                local hasLevel=r.mcLevel~=nil
+                local decoration=r.mcType
+                if decoration~=nil then assert(decoration=='tab' or decoration=='keybind','mcType must be tab or keybind') end
+                s.mcKeybind=decoration=='keybind'
                 if decoration=='tab' then
-                    assert(s.kind=='picker','kemType=tab requires a picker')
-                    assert(#s.values<=8,'kemType=tab supports at most eight choices')
-                    s.kemTabs=true
+                    assert(s.kind=='picker','mcType=tab requires a picker')
+                    assert(#s.values<=8,'mcType=tab supports at most eight choices')
+                    s.mcTabs=true
                 end
                 if r.Pair~=nil then
-                    assert(decoration=='tab' and s.kind=='picker','Pair must be declared by an kemType=tab picker')
+                    assert(decoration=='tab' and s.kind=='picker','Pair must be declared by an mcType=tab picker')
                     assert(trim(r.Pair)~='','Pair requires a setting Id')
-                    s.kemPairTargetId=trim(r.Pair)
+                    s.mcPairTargetId=trim(r.Pair)
                 end
-                if r.kemTabsWidth~=nil then
-                    local width=tonumber(r.kemTabsWidth)
-                    assert(decoration=='tab','kemTabsWidth requires kemType=tab')
+                if r.mcTabsWidth~=nil then
+                    local width=tonumber(r.mcTabsWidth)
+                    assert(decoration=='tab','mcTabsWidth requires mcType=tab')
                     assert(width and width%1==0 and width>=160 and width<=440,
-                        'kemTabsWidth must be an integer from 160 through 440')
-                    s.kemTabsWidth=width
+                        'mcTabsWidth must be an integer from 160 through 440')
+                    s.mcTabsWidth=width
                 end
-                if r.kemHeader~=nil and not hasLevel then
-                    assert(r.kemHeader=='0' or r.kemHeader=='1','kemHeader must be 0 or 1')
-                    assert(r.kemHeader=='0' or s.kind=='toggle','kemHeader=1 requires a toggle')
-                    s.kemHeader=r.kemHeader=='1'
+                if r.mcHeader~=nil and not hasLevel then
+                    assert(r.mcHeader=='0' or r.mcHeader=='1','mcHeader must be 0 or 1')
+                    assert(r.mcHeader=='0' or s.kind=='toggle','mcHeader=1 requires a toggle')
+                    s.mcHeader=r.mcHeader=='1'
                 end
-                if hasLevel then s.kemHeader=s.kemFont==1 end
+                if hasLevel then s.mcHeader=s.mcFont==1 end
             end
         end
     end
     local headers=0
     for index,s in ipairs(items) do
-        s.kemGroup=groups[s.group]
-        if s.kemPairTargetId then
-            local target=assert(byId[s.kemPairTargetId],'unknown Pair setting')
-            assert(target.kind=='slider' and target.kemKeybind,'Pair target must be an kemType=keybind integer setting')
-            assert(not target.kemPairId,'keybind setting cannot belong to more than one Pair')
-            target.kemPairId=s.id;target.kemPairIndex=index;s.kemPairTargetIndex=nil
-            for i,candidate in ipairs(items) do if candidate==target then s.kemPairTargetIndex=i;break end end
+        s.mcGroup=groups[s.group]
+        if s.mcPairTargetId then
+            local target=assert(byId[s.mcPairTargetId],'unknown Pair setting')
+            assert(target.kind=='slider' and target.mcKeybind,'Pair target must be an mcType=keybind integer setting')
+            assert(not target.mcPairId,'keybind setting cannot belong to more than one Pair')
+            target.mcPairId=s.id;target.mcPairIndex=index;s.mcPairTargetIndex=nil
+            for i,candidate in ipairs(items) do if candidate==target then s.mcPairTargetIndex=i;break end end
         end
-        if s.kemHeader then headers=headers+1 end
+        if s.mcHeader then headers=headers+1 end
     end
     assert(headers<=1,'only one level-one setting per provider')
     return items
@@ -158,15 +155,26 @@ function M.style(label,level,api)
     if level==5 then label:SetRenderOpacity(0.85) end
 end
 function M.install(choices,controls,pages)
-    if controls.kemPresentationVersion then return false end
+    if controls.mcPresentationVersion then return false end
     local parse,build=choices.parse,controls.build
     choices.parse=function(content) return M.parse(content,parse(content)) end
     controls.build=function(tree,providers,api)
-        local adapted,labels,helpWidgets={},{},{}
-        local valueSignals={}
+        local adapted={}
+        -- Cached pages may be evicted; do not retain their Lua widget wrappers.
+        local labels=setmetatable({},{__mode='k'})
+        local helpWidgets=setmetatable({},{__mode='k'})
+        local valueSignals=setmetatable({},{__mode='k'})
         local ui
         local constructing,pendingHelp
         for k,v in pairs(api) do adapted[k]=v end
+        adapted.releasePanel=function(panel,provider)
+            -- A Level 1 row was moved outside the evicted ScrollBox.
+            if panel.mcHeader then
+                panel.mcHeader.wrapper:RemoveFromParent()
+                panel.mcHeader=nil
+            end
+            if api.releasePanel then api.releasePanel(panel,provider) end
+        end
         adapted.setText=function(widget,value)
             local signal=valueSignals[widget]
             if not signal then return api.setText(widget,value) end
@@ -182,8 +190,8 @@ function M.install(choices,controls,pages)
             local label=api.caption(owner,text)
             if constructing then
                 for _,s in ipairs(providers[constructing].choices or {}) do
-                    if text==s.group and s.kemGroup and s.kemGroup.heading and s.kemGroup.help then
-                        pendingHelp={heading=label,text=s.kemGroup.help};break
+                    if text==s.group and s.mcGroup and s.mcGroup.heading and s.mcGroup.help then
+                        pendingHelp={heading=label,text=s.mcGroup.help};break
                     end
                 end
             end
@@ -219,10 +227,10 @@ function M.install(choices,controls,pages)
         end
         local function decorate(index)
             local panel=ui.panels[index]
-            if panel.kemPresented then return end
+            if panel.mcPresented then return end
             for i,row in ipairs(panel.rows) do
                 local setting=providers[index].choices[i]
-                row.kemLabel=labels[row.widget]
+                row.mcLabel=labels[row.widget]
                 local identity=api.caption(tree,settingIdentity(i,providers[index],setting))
                 identity:SetVisibility(1)
                 add(row.wrapper:GetContent(),identity)
@@ -232,21 +240,21 @@ function M.install(choices,controls,pages)
                     add(row.wrapper:GetContent(),marker)
                     valueSignals[row.value]={marker=marker,index=i}
                 end
-                if setting.kemFixedMode then
-                    row.kemModeState=api.caption(tree,'KEM_MODE\nfixed')
-                    row.kemModeState:SetVisibility(1)
-                    add(row.wrapper:GetContent(),row.kemModeState)
+                if setting.mcFixedMode then
+                    row.mcModeState=api.caption(tree,'KEM_MODE\nfixed')
+                    row.mcModeState:SetVisibility(1)
+                    add(row.wrapper:GetContent(),row.mcModeState)
                 end
-                local level=setting.kemFont
+                local level=setting.mcFont
                 if level==1 and providers[index].id=='ModCoreTemplates' then level=2 end
-                M.style(row.kemLabel,level,api)
+                M.style(row.mcLabel,level,api)
                 if level==1 then
-                    local slot=setting.kind=='toggle' and row.widget:GetContent().Slot or row.kemLabel.Slot
+                    local slot=setting.kind=='toggle' and row.widget:GetContent().Slot or row.mcLabel.Slot
                     local padding=slot.Padding
                     slot:SetPadding({Left=0,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom})
                 end
-                if setting.kemHeader and ui.kemHeaderHost and modulePage(providers[index]) then
-                    assert(not panel.kemHeader,'only one level-one setting per provider')
+                if setting.mcHeader and ui.mcHeaderHost and providers[index].id~="ModCoreTemplates" then
+                    assert(not panel.mcHeader,'only one level-one setting per provider')
                     local placeholder=new('SizeBox')
                     local path=assert(row.wrapper:GetFullName():match('^%S+ (.+)$'))
                     local marker=api.caption(tree,'KEM_HEADER_ROW\n'..path)
@@ -261,25 +269,25 @@ function M.install(choices,controls,pages)
                     end
                     panel.scroll:ClearChildren()
                     for _,child in ipairs(children) do add(panel.scroll,child.widget):SetPadding(child.padding) end
-                    row.kemLabel:SetVisibility(1)
-                    add(ui.kemHeaderHost,row.wrapper)
-                    local title=ui.kemHeaderTitle
+                    row.mcLabel:SetVisibility(1)
+                    add(ui.mcHeaderHost,row.wrapper)
+                    local title=ui.mcHeaderTitle
                     if title then
-                        assert(ui.kemHeaderHost:RemoveChild(title),'KEM page title relocation')
-                        local titleSlot=add(ui.kemHeaderHost,title)
+                        assert(ui.mcHeaderHost:RemoveChild(title),'KEM page title relocation')
+                        local titleSlot=add(ui.mcHeaderHost,title)
                         titleSlot:SetHorizontalAlignment(1);titleSlot:SetVerticalAlignment(2)
                     end
-                    row.kemHeader=true;row.kemPlaceholder=placeholder;panel.kemHeader=row
+                    row.mcHeader=true;row.mcPlaceholder=placeholder;panel.mcHeader=row
                 end
-                if setting.kemTabs then
+                if setting.mcTabs then
                     -- Keep DMM's original controls alive for navigation, dirty
                     -- notifications and reconstruction. No stock reparenting.
                     local tabs=new('HorizontalBox')
-                    row.kemTabs={}
+                    row.mcTabs={}
                     local count=#setting.values
-                    local paired=setting.kemPairTargetId~=nil
+                    local paired=setting.mcPairTargetId~=nil
                     local disablesKey=paired and count>=3 and setting.values[3]==-1
-                    local totalWidth=paired and 150 or (setting.kemTabsWidth or math.min(384,110*count))
+                    local totalWidth=paired and 150 or (setting.mcTabsWidth or math.min(384,110*count))
                     local keySpace=paired and 104 or 0
                     local defaultSpace=paired and 104 or 0
                     local choices={}
@@ -299,7 +307,7 @@ function M.install(choices,controls,pages)
                         width=modeCount>1 and (totalWidth/2)/(modeCount-1) or totalWidth/2
                     end
                     local defaultTabs=disablesKey and new('HorizontalBox') or nil
-                    if paired then row.kemTabsBackgrounds={} end
+                    if paired then row.mcTabsBackgrounds={} end
                     for _,choice in ipairs(choices) do
                         local button,label=api.button(tree,choice.label);button.IsFocusable=false
                         label:SetJustification(1);label:SetTextOverflowPolicy(1)
@@ -313,13 +321,13 @@ function M.install(choices,controls,pages)
                             background=new('Border')
                             background:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.18})
                             api.need(background:SetContent(button),'KEM paired tab background')
-                            row.kemTabsBackgrounds[#row.kemTabsBackgrounds+1]=background
+                            row.mcTabsBackgrounds[#row.mcTabsBackgrounds+1]=background
                             visible=background
                         end
                         local choiceWidth=choice.toggleValues and totalWidth/2 or width
                         add(isDefault and defaultTabs or tabs,
                             sized(visible,isDefault and 96 or choiceWidth,choice.toggleValues and 32 or nil))
-                        row.kemTabs[#row.kemTabs+1]={widget=button,label=label,value=choice.value,
+                        row.mcTabs[#row.mcTabs+1]={widget=button,label=label,value=choice.value,
                             toggleValues=choice.toggleValues,toggleLabels=choice.toggleLabels,
                             pressed=false,pointer=false,background=background}
                     end
@@ -328,10 +336,10 @@ function M.install(choices,controls,pages)
                         tabs:SetRenderTranslation({X=-totalWidth/2,Y=0})
                     end
                     local slot=add(overlay,tabs);slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(2)
-                    if paired then row.kemTabsBackground=row.kemTabsBackgrounds[1] end
+                    if paired then row.mcTabsBackground=row.mcTabsBackgrounds[1] end
                     if defaultTabs then
                         defaultTabs:SetRenderTranslation({X=-(totalWidth+8+96+8),Y=0})
-                        row.kemDefaultBackground=defaultTabs
+                        row.mcDefaultBackground=defaultTabs
                         local defaultSlot=add(overlay,defaultTabs)
                         defaultSlot:SetHorizontalAlignment(3);defaultSlot:SetVerticalAlignment(2)
                     end
@@ -339,13 +347,13 @@ function M.install(choices,controls,pages)
                     if paired then
                         local hostBox=new('SizeBox');hostBox:SetWidthOverride(96);hostBox:SetHeightOverride(32)
                         local host=new('Overlay');api.need(hostBox:SetContent(host),'KEM pair host content')
-                        local marker=api.caption(tree,pairHostMarkerPrefix..setting.kemPairTargetId)
+                        local marker=api.caption(tree,pairHostMarkerPrefix..setting.mcPairTargetId)
                         marker:SetVisibility(1);add(host,marker)
                         hostBox:SetRenderTranslation({X=-(totalWidth+8),Y=0})
                         local hostSlot=add(overlay,hostBox);hostSlot:SetHorizontalAlignment(3);hostSlot:SetVerticalAlignment(2)
-                        row.kemPairHost,row.kemPairHostBox,row.kemTabsWidth,row.kemPairDisablesKey=
+                        row.mcPairHost,row.mcPairHostBox,row.mcTabsWidth,row.mcPairDisablesKey=
                             host,hostBox,totalWidth,disablesKey
-                        panel.rows[setting.kemPairTargetIndex].kemPairOwner=i
+                        panel.rows[setting.mcPairTargetIndex].mcPairOwner=i
                     end
                     for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
                 end
@@ -353,14 +361,14 @@ function M.install(choices,controls,pages)
             local parentWidgets={}
             for _,heading in ipairs(panel.headings) do
                 local setting=providers[index].choices[heading.first]
-                if setting.kemGroup then
-                    M.style(heading.widget,setting.kemGroup.font,api)
-                    if not setting.kemGroup.heading then
+                if setting.mcGroup then
+                    M.style(heading.widget,setting.mcGroup.font,api)
+                    if not setting.mcGroup.heading then
                         heading.widget:SetVisibility(1);heading.visible=false
                     end
-                    local parent=setting.kemGroup.parent
+                    local parent=setting.mcGroup.parent
                     if parent then
-                        heading.kemParent=parent
+                        heading.mcParent=parent
                         if not parentWidgets[parent.key] then
                             local label=api.caption(tree,parent.label);M.style(label,parent.font,api)
                             local slot=add(panel.scroll,label)
@@ -373,9 +381,9 @@ function M.install(choices,controls,pages)
             -- Capture existing scroll children only once, after construction.
             -- Ordering moves whole category blocks; rows retain their children.
             local ordered=false
-            for _,s in ipairs(providers[index].choices) do if s.kemGroup and s.kemGroup.order then ordered=true end end
+            for _,s in ipairs(providers[index].choices) do if s.mcGroup and s.mcGroup.order then ordered=true end end
             if ordered or next(parentWidgets) then
-                panel.kemBlocks={}
+                panel.mcBlocks={}
                 local known={}
                 local function capture(block,child)
                     local p=child.Slot.Padding
@@ -383,41 +391,41 @@ function M.install(choices,controls,pages)
                     known[child]=true
                 end
                 for _,heading in ipairs(panel.headings) do
-                    local block={heading=heading,parent=heading.kemParent,children={}};panel.kemBlocks[#panel.kemBlocks+1]=block
+                    local block={heading=heading,parent=heading.mcParent,children={}};panel.mcBlocks[#panel.mcBlocks+1]=block
                     capture(block,heading.widget)
                     if helpWidgets[heading.widget] then capture(block,helpWidgets[heading.widget]) end
-                    for i=heading.first,heading.last do capture(block,panel.rows[i].kemPlaceholder or panel.rows[i].wrapper) end
+                    for i=heading.first,heading.last do capture(block,panel.rows[i].mcPlaceholder or panel.rows[i].wrapper) end
                 end
                 local extra={children={}}
                 -- Parent headings were added only to obtain real UMG widgets.
-                -- They are rebuilt from kemLayout and must not become extras.
+                -- They are rebuilt from mcLayout and must not become extras.
                 for _,entry in pairs(parentWidgets) do known[entry.widget]=true end
                 for n=0,panel.scroll:GetChildrenCount()-1 do
                     local child=panel.scroll:GetChildAt(n)
                     if not known[child] then capture(extra,child) end
                 end
-                panel.kemLayout={}
+                panel.mcLayout={}
                 local entriesByParent={}
                 local unparented
-                for _,block in ipairs(panel.kemBlocks) do
+                for _,block in ipairs(panel.mcBlocks) do
                     local entry
                     if block.parent then
                         entry=entriesByParent[block.parent.key]
                         if not entry then
                             entry={parent=block.parent,parentWidget=parentWidgets[block.parent.key].widget,blocks={}}
-                            entriesByParent[block.parent.key]=entry;panel.kemLayout[#panel.kemLayout+1]=entry
+                            entriesByParent[block.parent.key]=entry;panel.mcLayout[#panel.mcLayout+1]=entry
                         end
                         unparented=nil
                     else
-                        if not unparented then unparented={blocks={}};panel.kemLayout[#panel.kemLayout+1]=unparented end
+                        if not unparented then unparented={blocks={}};panel.mcLayout[#panel.mcLayout+1]=unparented end
                         entry=unparented
                     end
                     entry.blocks[#entry.blocks+1]=block
                 end
-                if #extra.children>0 then panel.kemLayout[#panel.kemLayout+1]={blocks={extra},extra=true} end
-                panel.kemParentWidgets=parentWidgets
+                if #extra.children>0 then panel.mcLayout[#panel.mcLayout+1]={blocks={extra},extra=true} end
+                panel.mcParentWidgets=parentWidgets
             end
-            panel.kemPresented=true
+            panel.mcPresented=true
         end
         function ui:prepare(index)
             constructing=index;prepare(self,index);constructing=nil;decorate(index)
@@ -437,29 +445,29 @@ function M.install(choices,controls,pages)
             local logicalVisibility
             for i,row in ipairs(self.panels[self.active].rows) do
                 local setting=self.model.items[i]
-                if setting.kemPairTargetIndex then
+                if setting.mcPairTargetIndex then
                     logicalVisibility=logicalVisibility or self.model:visibility()
-                    local keyVisible=logicalVisibility[setting.kemPairTargetIndex]==true
-                    row.kemPairHostBox:SetVisibility(keyVisible and 0 or 1)
-                    row.widget:GetParent():SetWidthOverride(584-row.kemTabsWidth-(keyVisible and 104 or 0))
-                    self.panels[self.active].rows[setting.kemPairTargetIndex].wrapper:SetVisibility(1)
+                    local keyVisible=logicalVisibility[setting.mcPairTargetIndex]==true
+                    row.mcPairHostBox:SetVisibility(keyVisible and 0 or 1)
+                    row.widget:GetParent():SetWidthOverride(584-row.mcTabsWidth-(keyVisible and 104 or 0))
+                    self.panels[self.active].rows[setting.mcPairTargetIndex].wrapper:SetVisibility(1)
                 end
-                if row.kemModeState then
+                if row.mcModeState then
                     logicalVisibility=logicalVisibility or self.model:visibility()
-                    local target=setting.kemPairIndex
+                    local target=setting.mcPairIndex
                     local editable=target and logicalVisibility[target]==true or false
-                    if row.kemModeEditable~=editable then
-                        api.setText(row.kemModeState,'KEM_MODE\n'..(editable and 'editable' or 'fixed'))
-                        row.kemModeEditable=editable
+                    if row.mcModeEditable~=editable then
+                        api.setText(row.mcModeState,'KEM_MODE\n'..(editable and 'editable' or 'fixed'))
+                        row.mcModeEditable=editable
                     end
                 end
-                if row.kemHeader then row.wrapper:SetVisibility(row.visible and 0 or 1) end
-                if setting.kemLabelRule then
-                    local text=dynamic(setting.kemLabelRule,self.model,setting.label)
-                    if text~=row.kemLabelText then api.setText(row.kemLabel,text);row.kemLabelText=text end
+                if row.mcHeader then row.wrapper:SetVisibility(row.visible and 0 or 1) end
+                if setting.mcLabelRule then
+                    local text=dynamic(setting.mcLabelRule,self.model,setting.label)
+                    if text~=row.mcLabelText then api.setText(row.mcLabel,text);row.mcLabelText=text end
                 end
-                for _,tab in ipairs(row.kemTabs or {}) do
-                    local mapping=self.model.items[i].kemMapping
+                for _,tab in ipairs(row.mcTabs or {}) do
+                    local mapping=self.model.items[i].mcMapping
                     local enabled=not self.model.error and (not mapping or tab.value~=mapping.custom)
                     local current=self.model.pending[i]
                     local selected=tab.toggleValues and
@@ -479,44 +487,44 @@ function M.install(choices,controls,pages)
                 end
             end
             for index,panel in ipairs(self.panels) do
-                if index~=self.active and panel.kemHeader then panel.kemHeader.wrapper:SetVisibility(1) end
+                if index~=self.active and panel.mcHeader then panel.mcHeader.wrapper:SetVisibility(1) end
             end
             for _,heading in ipairs(self.panels[self.active].headings) do
                 local setting=self.model.items[heading.first]
                 local shown=false
                 for i=heading.first,heading.last do
                     local row=self.panels[self.active].rows[i]
-                    if row.visible and not row.kemHeader then shown=true;break end
+                    if row.visible and not row.mcHeader then shown=true;break end
                 end
-                local group=setting.kemGroup
-                heading.kemContentVisible=shown
+                local group=setting.mcGroup
+                heading.mcContentVisible=shown
                 local headingShown=shown and (not group or group.heading)
                 if heading.visible~=headingShown then
                     heading.widget:SetVisibility(headingShown and 0 or 1);heading.visible=headingShown
                 end
                 if group and group.labelRule then
                     local text=dynamic(group.labelRule,self.model,setting.group)
-                    if heading.kemText~=text then api.setText(heading.widget,text);heading.kemText=text end
+                    if heading.mcText~=text then api.setText(heading.widget,text);heading.mcText=text end
                 end
                 local help=helpWidgets[heading.widget]
-                if help and heading.kemHelpVisible~=heading.visible then
-                    help:SetVisibility(heading.visible and 4 or 1);heading.kemHelpVisible=heading.visible
+                if help and heading.mcHelpVisible~=heading.visible then
+                    help:SetVisibility(heading.visible and 4 or 1);heading.mcHelpVisible=heading.visible
                 end
             end
             local panel=self.panels[self.active]
             local visible={}
             for i,row in ipairs(panel.rows) do visible[i]=row.visible and '1' or '0' end
             local visibilitySignature=table.concat(visible)
-            if panel.kemVisibility and panel.kemVisibility~=visibilitySignature then pageReady=true end
-            panel.kemVisibility=visibilitySignature
-            if panel.kemBlocks then
+            if panel.mcVisibility and panel.mcVisibility~=visibilitySignature then pageReady=true end
+            panel.mcVisibility=visibilitySignature
+            if panel.mcBlocks then
                 local signatureParts,orderedFlat={},{}
                 local function reorder(blocks)
                     local slots,candidates,result={},{},{}
                     for n,block in ipairs(blocks) do
                         result[n]=block
                         local s=block.heading and self.model.items[block.heading.first]
-                        local rule=s and s.kemGroup and s.kemGroup.order
+                        local rule=s and s.mcGroup and s.mcGroup.order
                         local rank=dynamic(rule,self.model,n)
                         signatureParts[#signatureParts+1]=(block.heading and tostring(block.heading.first) or 'extra')..'='..tostring(rank)
                         if rule then
@@ -527,7 +535,7 @@ function M.install(choices,controls,pages)
                     for n,position in ipairs(slots) do result[position]=candidates[n].block end
                     return result
                 end
-                for _,entry in ipairs(panel.kemLayout) do
+                for _,entry in ipairs(panel.mcLayout) do
                     signatureParts[#signatureParts+1]='parent='..(entry.parent and entry.parent.key or '')
                     entry.orderedBlocks=reorder(entry.blocks)
                     for _,block in ipairs(entry.orderedBlocks) do
@@ -535,9 +543,9 @@ function M.install(choices,controls,pages)
                     end
                 end
                 local signature=table.concat(signatureParts,':')
-                if signature~=panel.kemOrder or not panel.kemLayoutBuilt then
+                if signature~=panel.mcOrder or not panel.mcLayoutBuilt then
                     panel.scroll:ClearChildren()
-                    for _,entry in ipairs(panel.kemLayout) do
+                    for _,entry in ipairs(panel.mcLayout) do
                         if entry.parentWidget then
                             add(panel.scroll,entry.parentWidget):SetPadding({Left=0,Top=18,Right=0,Bottom=6})
                         end
@@ -545,16 +553,16 @@ function M.install(choices,controls,pages)
                             for _,child in ipairs(block.children) do add(panel.scroll,child.widget):SetPadding(child.padding) end
                         end
                     end
-                    if panel.kemLayoutBuilt then pageReady=true end
-                    panel.kemOrder=signature
-                    panel.kemLayoutBuilt=true
+                    if panel.mcLayoutBuilt then pageReady=true end
+                    panel.mcOrder=signature
+                    panel.mcLayoutBuilt=true
                 end
-                panel.kemOrderedBlocks=orderedFlat
-                for _,entry in ipairs(panel.kemLayout) do
+                panel.mcOrderedBlocks=orderedFlat
+                for _,entry in ipairs(panel.mcLayout) do
                     if entry.parentWidget then
                         local shown=false
                         for _,block in ipairs(entry.blocks) do
-                            if block.heading and block.heading.kemContentVisible then shown=true;break end
+                            if block.heading and block.heading.mcContentVisible then shown=true;break end
                         end
                         if entry.parentVisible~=shown then
                             entry.parentWidget:SetVisibility(shown and 4 or 1);entry.parentVisible=shown
@@ -564,29 +572,30 @@ function M.install(choices,controls,pages)
                 if self.visibleRows then
                     local visible={}
                     -- Header controls precede scroll content for navigation.
-                    for i,row in ipairs(panel.rows) do if row.kemHeader and row.visible and not row.kemPairOwner then visible[#visible+1]=i end end
-                    for _,block in ipairs(panel.kemOrderedBlocks or panel.kemBlocks) do
+                    for i,row in ipairs(panel.rows) do if row.mcHeader and row.visible and not row.mcPairOwner then visible[#visible+1]=i end end
+                    for _,block in ipairs(panel.mcOrderedBlocks or panel.mcBlocks) do
                         if block.heading then
                             for i=block.heading.first,block.heading.last do
-                                if panel.rows[i].visible and not panel.rows[i].kemHeader and not panel.rows[i].kemPairOwner then visible[#visible+1]=i end
+                                if panel.rows[i].visible and not panel.rows[i].mcHeader and not panel.rows[i].mcPairOwner then visible[#visible+1]=i end
                             end
                         end
                     end
                     self.visibleRows=visible;self:wireNavigation(self.footer)
                 end
             end
-            if self.visibleRows and not panel.kemBlocks then
+            if self.visibleRows and not panel.mcBlocks then
                 local navigation={}
                 for i,row in ipairs(panel.rows) do
-                    if row.visible and not row.kemPairOwner then navigation[#navigation+1]=i end
+                    if row.visible and not row.mcPairOwner then navigation[#navigation+1]=i end
                 end
                 self.visibleRows=navigation;self:wireNavigation(self.footer)
             end
             if pageReady then
-                -- Visibility changes do not reconstruct DMM's page or change its
-                -- active index, but they can expose a row after KEM's initial pass.
-                -- Reuse the existing deferred page-ready seam once per refresh.
-                self.root:SetActiveWidgetIndex(self.active-1)
+                -- Cached panels have no stable child index after eviction.
+                -- Notify decorators directly without changing the selected widget.
+                if api.events then
+                    api.events:emit('providerRefreshed',{tree=tree,provider=providers[self.active],panel=panel,pc=api.pc})
+                end
             end
             return result
         end
@@ -594,11 +603,11 @@ function M.install(choices,controls,pages)
             if self.active and not self.model.error then
                 for i,row in ipairs(self.panels[self.active].rows) do
                     if row.visible then
-                        for _,tab in ipairs(row.kemTabs or {}) do
+                        for _,tab in ipairs(row.mcTabs or {}) do
                             tab.hovered=tab.widget:IsHovered()==true
                             styleBackground(tab,tab.hovered)
                         end
-                        for _,tab in ipairs(row.kemTabs or {}) do
+                        for _,tab in ipairs(row.mcTabs or {}) do
                             local clicked
                             clicked,tab.pressed,tab.pointer=released(tab.widget,tab.pressed,tab.pointer,tab.hovered)
                             if clicked and tab.enabled then
@@ -621,7 +630,7 @@ function M.install(choices,controls,pages)
             clearPresses(self)
             if self.active then
                 for _,row in ipairs(self.panels[self.active].rows) do
-                    for _,tab in ipairs(row.kemTabs or {}) do tab.pressed,tab.pointer=false,false end
+                    for _,tab in ipairs(row.mcTabs or {}) do tab.pressed,tab.pointer=false,false end
                 end
             end
         end
@@ -630,7 +639,7 @@ function M.install(choices,controls,pages)
             if self.active then
                 for _,row in ipairs(self.panels[self.active].rows) do
                     if row.visible then
-                        for _,tab in ipairs(row.kemTabs or {}) do if tab.widget:IsPressed() then return true end end
+                        for _,tab in ipairs(row.mcTabs or {}) do if tab.widget:IsPressed() then return true end end
                     end
                 end
             end
@@ -638,7 +647,7 @@ function M.install(choices,controls,pages)
         end
         return ui
     end
-    controls.kemPresentationVersion=M.version
+    controls.mcPresentationVersion=M.version
     if pages then
         local buildPages=pages.build
         pages.build=function(tree,providers,status,api)
@@ -689,19 +698,31 @@ function M.install(choices,controls,pages)
                 end
             end
             assert(inserted,'KEM mod-browser header placement')
-            for _,row in ipairs(page.allRows or {}) do
-                local label=api.need(row.widget:GetContent(),'KEM mod-list label')
-                local provider=providers[row.providerIndex]
-                local browserLevel=provider and (provider.kemBrowserLevel or provider.ammBrowserLevel) or 2
-                if not styles[browserLevel] then browserLevel=2 end
-                local indent=provider and (provider.kemBrowserIndent or provider.ammBrowserIndent)
-                if indent==nil then indent=0 end
-                if type(indent)~='number' or indent< -80 or indent>80 then indent=0 end
-                M.style(label,browserLevel,api)
-                label.Slot:SetPadding({Left=indent,Top=4,Right=12,Bottom=4})
+            local function styleBrowserRows(rows)
+                for _,row in ipairs(rows or {}) do
+                    if row.widget then
+                        local label=api.need(row.widget:GetContent(),'MC mod-list label')
+                        local provider=providers[row.providerIndex]
+                        local browserLevel=provider and provider.mcBrowserLevel or 2
+                        if not styles[browserLevel] then browserLevel=2 end
+                        local indent=provider and provider.mcBrowserIndent or 0
+                        if type(indent)~='number' or indent< -80 or indent>80 then indent=0 end
+                        M.style(label,browserLevel,api)
+                        label.Slot:SetPadding({Left=indent,Top=4,Right=12,Bottom=4})
+                    end
+                end
             end
-            page.controls.kemHeaderHost=host
-            page.controls.kemHeaderTitle=title
+            styleBrowserRows(page.mounted or page.allRows)
+            if type(page.window)=='function' then
+                local window=page.window
+                function page:window(...)
+                    local changed=window(self,...)
+                    if changed then styleBrowserRows(self.mounted) end
+                    return changed
+                end
+            end
+            page.controls.mcHeaderHost=host
+            page.controls.mcHeaderTitle=title
             return page
         end
     end
