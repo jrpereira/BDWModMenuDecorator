@@ -234,7 +234,7 @@ assert(categoryLabel.text=='Menu Controls' and categoryLabel.Font.Size==14 and c
     'Category modules must accept level-four browser styling')
 assert(categoryLabel.Slot.Padding.Left==20,
     'Category modules must accept a small browser indentation')
-local ui=controls.build(widget(),{{id='ModCoreTemplates.module.ActionFangdango',choices=items}},api)
+local ui=controls.build(widget(),{{id='ModCoreTemplates.module.Fangdango',choices=items}},api)
 ui.mcHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
