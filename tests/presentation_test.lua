@@ -420,3 +420,14 @@ assert(recycled:window(2) and recycledLabel.Font.Size==14 and recycledLabel.Slot
 assert(recycled:window(1) and recycledLabel.Font.Size==16 and recycledLabel.Slot.Padding.Left==0,
     'Recycling must also clear the previous provider indentation')
 print('PASS nested headings, tab clicks, selected state, font levels, dynamic labels/order, page reuse and closed-menu inactivity')
+items[1].values,items[1].labels,items[1].default={0},{'Slot 1'},0
+M.parse('[Setting.Primary]\nId=Primary\nmcReadOnly=1\nmcReferenceLabel=Slot 1\nmcType=tab\n',items)
+local readOnly=controls.build(widget(),{{choices=items}},api)
+readOnly:show(1)
+local referenceTabs=readOnly.panels[1].rows[1].mcTabs
+assert(#referenceTabs==1 and referenceTabs[1].enabled==false and referenceTabs[1].label.text=='Slot 1',
+    'Reference mode is a disabled Slot label')
+referenceTabs[1].widget.clicked=true
+local before=readOnly.model.pending[1]
+readOnly:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(readOnly.model.pending[1]==before, 'Reference clicks cannot change the pending value')

@@ -7,16 +7,26 @@ function M.parse(content,items)
     local byId={}
     for _,item in ipairs(items) do byId[item.id]=item end
     local function finish()
-        if not current or current.mcNavigation==nil then return end
-        assert(current.mcNavigation=='1','mcNavigation must be 1')
+        if not current or (current.mcNavigation==nil and current.mcReadOnly==nil) then return end
+        if current.mcReadOnly~=nil then
+            assert(current.mcReadOnly=='1','mcReadOnly must be 1')
+        else assert(current.mcNavigation=='1','mcNavigation must be 1') end
         local item=assert(byId[current.Id or ('setting_'..sections)],
             'navigation picker setting unavailable')
         assert(item.kind=='picker','mcNavigation requires a picker')
         assert(not item.targets and not current.MappedPresetTargets,
             'navigation picker cannot own preset targets')
-        marked=marked+1
-        assert(marked<=1,'only one navigation picker per provider')
-        item.mcNavigation=true
+        if current.mcReadOnly then
+            for _,label in ipairs(item.labels) do
+                assert(label==item.labels[1],'read-only display labels must match')
+            end
+            item.values,item.labels={item.default},{item.labels[1]}
+            item.mcReadOnly=true
+        else
+            marked=marked+1
+            assert(marked<=1,'only one navigation picker per provider')
+            item.mcNavigation=true
+        end
     end
     for line in (content..'\n'):gmatch('([^\n]*)\n') do
         local section=trim(line):match('^%[([^%]]+)%]$')
@@ -34,25 +44,25 @@ function M.parse(content,items)
 end
 
 function M.open(provider,open)
-    local index
+    local transient,indices,items={}, {}, {}
     for i,setting in ipairs(provider.choices or {}) do
-        if setting.mcNavigation then index=i;break end
-    end
-    if not index then return open(provider) end
-    local items={}
-    for i,setting in ipairs(provider.choices) do
-        if i~=index then
+        if setting.mcNavigation or setting.mcReadOnly then
+            transient[i]=true
+        else
+            indices[i]=#items+1
             local copy={}
             for key,value in pairs(setting) do copy[key]=value end
-            if copy.targets then
-                local targets={}
-                for n,target in ipairs(copy.targets) do
-                    assert(target~=index,'navigation picker cannot be a preset target')
-                    targets[n]=target>index and target-1 or target
-                end
-                copy.targets=targets
-            end
             items[#items+1]=copy
+        end
+    end
+    if not next(transient) then return open(provider) end
+    for _,copy in ipairs(items) do
+        if copy.targets then
+            local targets={}
+            for n,target in ipairs(copy.targets) do
+                targets[n]=assert(indices[target],'transient picker cannot be a preset target')
+            end
+            copy.targets=targets
         end
     end
     local filtered={}
@@ -60,32 +70,45 @@ function M.open(provider,open)
     filtered.choices=items
     local model=open(filtered)
     if model.error then return model end
-    local navigation=provider.choices[index]
-    table.insert(model.items,index,navigation)
-    table.insert(model.pending,index,navigation.default)
-    table.insert(model.committed,index,navigation.default)
-    -- Restore original indices, including visibility and native linked presets.
-    for i,setting in ipairs(model.items) do model.items[i]=provider.choices[i] end
+    for i,setting in ipairs(provider.choices) do
+        if transient[i] then
+            table.insert(model.items,i,setting)
+            table.insert(model.pending,i,setting.default)
+            table.insert(model.committed,i,setting.default)
+        end
+    end
+    for i,setting in ipairs(provider.choices) do model.items[i]=setting end
     model.provider=provider
     local set,reset,apply=model.set,model.reset,model.apply
     function model:set(i,value)
+        if self.items[i].mcReadOnly then return end
         set(self,i,value)
-        if i==index then self.committed[index]=self.pending[index] end
+        if transient[i] then self.committed[i]=self.pending[i] end
     end
     function model:reset(i)
-        local view=i==nil and self.pending[index]
+        local views={}
+        for n in pairs(transient) do views[n]=self.pending[n] end
         reset(self,i)
-        if view~=nil then self.pending[index]=view end
-        if i==nil or i==index then self.committed[index]=self.pending[index] end
+        for n,value in pairs(views) do
+            self.pending[n],self.committed[n]=value,value
+        end
     end
     function model:apply()
-        local item=table.remove(self.items,index)
-        local pending=table.remove(self.pending,index)
-        local committed=table.remove(self.committed,index)
+        local removed={}
+        for i=#self.items,1,-1 do
+            if transient[i] then
+                removed[i]={table.remove(self.items,i),table.remove(self.pending,i),table.remove(self.committed,i)}
+            end
+        end
         local ok,success,why,event=pcall(apply,self)
-        table.insert(self.items,index,item)
-        table.insert(self.pending,index,pending)
-        table.insert(self.committed,index,committed)
+        for i=1,#provider.choices do
+            local item=removed[i]
+            if item then
+                table.insert(self.items,i,item[1])
+                table.insert(self.pending,i,item[2])
+                table.insert(self.committed,i,item[3])
+            end
+        end
         if not ok then error(success) end
         return success,why,event
     end

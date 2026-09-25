@@ -95,6 +95,8 @@ function M.parse(content,items)
             if s and not seen[id] then
                 seen[id]=true
                 s.mcFont=level(r.mcLevel)
+                s.mcReadOnly=flag(r.mcReadOnly,'mcReadOnly')
+                s.mcReferenceLabel=r.mcReferenceLabel
                 if r.mcMode~=nil then
                     assert(r.mcMode=='Tap' or r.mcMode=='Hold','mcMode must be Tap or Hold')
                     assert(r.mcType=='keybind' and s.kind=='slider','mcMode requires a keybind setting')
@@ -287,7 +289,7 @@ function M.install(choices,controls,pages)
                     local count=#setting.values
                     local paired=setting.mcPairTargetId~=nil
                     local disablesKey=paired and count>=3 and setting.values[3]==-1
-                    local totalWidth=paired and 150 or (setting.mcTabsWidth or math.min(384,110*count))
+                    local totalWidth=(paired or setting.mcReferenceLabel) and 150 or (setting.mcTabsWidth or math.min(384,110*count))
                     local keySpace=paired and 104 or 0
                     local defaultSpace=paired and 104 or 0
                     local choices={}
@@ -336,6 +338,15 @@ function M.install(choices,controls,pages)
                         tabs:SetRenderTranslation({X=-totalWidth/2,Y=0})
                     end
                     local slot=add(overlay,tabs);slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(2)
+                    if setting.mcReadOnly and setting.mcReferenceLabel then
+                        local reference,text=api.button(tree,setting.mcReferenceLabel)
+                        reference.IsFocusable=false;reference:SetIsEnabled(false)
+                        text:SetJustification(1)
+                        local box=sized(reference,96,32)
+                        box:SetRenderTranslation({X=-(totalWidth+8),Y=0})
+                        local referenceSlot=add(overlay,box)
+                        referenceSlot:SetHorizontalAlignment(3);referenceSlot:SetVerticalAlignment(2)
+                    end
                     if paired then row.mcTabsBackground=row.mcTabsBackgrounds[1] end
                     if defaultTabs then
                         defaultTabs:SetRenderTranslation({X=-(totalWidth+8+96+8),Y=0})
@@ -468,7 +479,7 @@ function M.install(choices,controls,pages)
                 end
                 for _,tab in ipairs(row.mcTabs or {}) do
                     local mapping=self.model.items[i].mcMapping
-                    local enabled=not self.model.error and (not mapping or tab.value~=mapping.custom)
+                    local enabled=not setting.mcReadOnly and not self.model.error and (not mapping or tab.value~=mapping.custom)
                     local current=self.model.pending[i]
                     local selected=tab.toggleValues and
                         (current==tab.toggleValues[1] or current==tab.toggleValues[2]) or current==tab.value

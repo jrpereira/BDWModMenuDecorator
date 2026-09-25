@@ -58,7 +58,7 @@ function M.install(log)
                 providerId=providerId,settingId=metadata.id,minimum=metadata.minimum,maximum=metadata.maximum,
                 fixedMode=metadata.mcFixedMode,modeId=modeRow and metadata.mcPairId or nil,
                 modeOptions=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.labels or nil,
-                modeValues=modeValues,disabledMode=modeValues and modeValues[3]==-1 and -1 or nil,
+                modeValues=modeValues,disabledMode=modeValues and (modeValues[2]==-2 and -2 or modeValues[3]==-1 and -1) or nil,
             } or nil
             if descriptor and row.kind=='slider' then
                 local ok,instance,detail=pcall(KeySelector.adopt,row,descriptor,modeRow,clicks)

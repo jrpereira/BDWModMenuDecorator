@@ -303,7 +303,7 @@ function M.plan(provider,manifest,choices,fs,settings)
     settings=settings or choices.parse(manifest:gsub('^\239\187\191',''))
     local persistent={}
     for _,setting in ipairs(settings) do
-        if not setting.mcNavigation then persistent[#persistent+1]=setting end
+        if not setting.mcNavigation and not setting.mcReadOnly then persistent[#persistent+1]=setting end
     end
     settings=persistent
     M.defaultSources(manifest,settings)

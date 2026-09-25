@@ -74,3 +74,23 @@ assert(#withIgnored==2 and withIgnored[1].mcNavigation,
 local plan=assert(InitConfig.plan(provider,manifest,Choices,Choices.fs,items))
 assert(not plan.content:find('View=',1,true),'config initialization must omit navigation')
 print('Navigation picker remains transient, controls visibility and never writes a config key')
+local references=manifest
+for slot=1,4 do
+    references=references..('\n[Setting.Reference%d]\nId=Reference%d\nType=picker\nLabel=Slot %d\nGroup=References\nDefault=0\nPresetValues=0|1\nPresetLabels=Slot %d|Slot %d\nmcReadOnly=1\n'):format(slot,slot,slot+4,slot,slot)
+end
+local displayItems=Choices.parse(references)
+local displayProvider={id=provider.id,path=provider.path,choices=displayItems}
+local displayModel=Choices.open(displayProvider)
+assert(not displayModel.error,displayModel.error)
+for i=3,6 do
+    displayModel:set(i,1)
+    assert(displayModel.pending[i]==0 and not displayModel:dirty())
+end
+displayModel:set(2,7)
+assert(displayModel:apply())
+assert(files[path]=='[Settings]\nReal=7\n' and #displayModel.items==6,
+    'Apply must omit every reference and restore model indices')
+displayModel:reset();displayModel:restore()
+assert(displayModel.pending[2]==7 and displayModel.pending[6]==0)
+local displayPlan=assert(InitConfig.plan(displayProvider,references,Choices,Choices.fs,displayItems))
+assert(not displayPlan.content:find('Reference',1,true),'references never receive persistent keys')
