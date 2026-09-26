@@ -39,6 +39,20 @@ end
 local function fails(fn,needle)
     local ok,err=pcall(fn);assert(not ok and tostring(err):find(needle,1,true),tostring(err))
 end
+do
+    local upgraded={{id='Mode',key='Mode',section='Controls',kind='picker',default=-2,
+        values={2,-2},file='config.ini'}}
+    local schema='[Setting.Mode]\nId=Mode\nValueMap=-1:-2;0:2\n'
+    local accepted={index=function(_,value) return value==2 or value==-2 end}
+    C.defaultSources(schema,upgraded)
+    local original=';personal\r\n[Controls]\r\nMode = -1 ; old default\r\nOther=keep\r\n'
+    local remapped=C.remapExisting(original,upgraded,accepted)
+    assert(remapped==';personal\r\n[Controls]\r\nMode = -2 ; old default\r\nOther=keep\r\n')
+    assert(C.remapExisting(remapped,upgraded,accepted)==remapped)
+    assert(C.remapExisting('[Controls]\nMode=0',upgraded,accepted)=='[Controls]\nMode=2')
+    assert(C.remapExisting('[Other]\nMode=-1',upgraded,accepted)=='[Other]\nMode=-1')
+    fails(function() C.defaultSources(schema:gsub('0:2','0:3;0:2'),upgraded) end,'duplicate ValueMap')
+end
 for _,role in ipairs({'', 'Role=0\n','Role=1\n'}) do
     for _,swap in ipairs({'','Swap=0\n','Swap=1\n','Swap=-2\n'}) do
         for _,old in ipairs({'','OldCount=0\n','OldCount=1\n'}) do

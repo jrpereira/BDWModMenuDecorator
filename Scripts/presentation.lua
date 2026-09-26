@@ -250,7 +250,7 @@ function M.install(choices,controls,pages)
                 local level=setting.mcFont
                 if level==1 and providers[index].id=='ModCoreTemplates' then level=2 end
                 M.style(row.mcLabel,level,api)
-                if level==1 then
+                if level==1 or level==2 then
                     local slot=setting.kind=='toggle' and row.widget:GetContent().Slot or row.mcLabel.Slot
                     local padding=slot.Padding
                     slot:SetPadding({Left=0,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom})

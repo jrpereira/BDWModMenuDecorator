@@ -344,8 +344,8 @@ assert(ui.panels[1].readyEvents==1,'Unchanged refresh must not repeat page event
 local header=ui.panels[1].rows[4]
 assert(header.mcHeader and header.wrapper:GetParent()==ui.mcHeaderHost)
 assert(header.mcPlaceholder.visible==1 and header.mcLabel.Font.Size==22)
-assert(header.mcLabel.Slot.Padding.Left==0 and ui.panels[1].rows[1].mcLabel.Slot.Padding.Left==20,
-    'Level-one setting labels must have no stock left indent')
+assert(header.mcLabel.Slot.Padding.Left==0 and ui.panels[1].rows[1].mcLabel.Slot.Padding.Left==0,
+    'Level-one and level-two setting labels must have no stock left indent')
 ui.model.pending[4]=0
 ui.mcTestSetText(header.value,'Off *')
 assert(header.value.text=='Off','Dirty suffix must never flicker in the value text')
@@ -395,8 +395,8 @@ assert(not templatePage.panels[1].rows[1].mcHeader
     and templatePage.panels[1].rows[1].wrapper:GetParent()==templatePage.panels[1].scroll
     and templatePage.panels[1].rows[1].mcLabel.visible~=1
     and templatePage.panels[1].rows[1].mcLabel.Font.Size==16
-    and templatePage.panels[1].rows[1].mcLabel.Slot.Padding.Left==20,
-    'Template page must keep its picker in a normally styled and indented row')
+    and templatePage.panels[1].rows[1].mcLabel.Slot.Padding.Left==0,
+    'Template page must keep its level-two picker in an unindented row')
 local pickerHeader=controls.build(widget(),{{id='ModCoreControls',choices=items}},api)
 pickerHeader.mcHeaderHost=page.controls.mcHeaderHost
 pickerHeader.mcHeaderTitle=page.modTitle
@@ -406,7 +406,7 @@ assert(pickerHeader.panels[1].rows[1].mcHeader
     and pickerHeader.panels[1].rows[1].mcLabel.visible==1
     and page.controls.mcHeaderHost.children[1]==pickerHeader.panels[1].rows[1].wrapper
     and page.controls.mcHeaderHost.children[2]==page.modTitle
-    and pickerHeader.panels[1].rows[4].mcLabel.Slot.Padding.Left==20,
+    and pickerHeader.panels[1].rows[4].mcLabel.Slot.Padding.Left==0,
     'Level-one picker must share the title row above the divider without a second label')
 pickerHeader.mcTestReleasePanel(pickerHeader.panels[1])
 assert(not pickerHeader.panels[1].mcHeader and not pickerHeader.panels[1].rows[1].wrapper:GetParent(),

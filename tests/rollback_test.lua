@@ -38,7 +38,7 @@ local clicks={attach=function() end}
 local descriptor={providerId='P',settingId='K',modeId='Mode',modeOptions={'Tap','Hold'}}
 local function row()
  local r={}
- for _,name in ipairs({'slider','valueWidget','surface','labelBox','surfaceBox','valueBox','tree','wrapper','labelWidget'}) do r[name]=widget() end
+ for _,name in ipairs({'slider','valueWidget','surface','overlay','labelBox','surfaceBox','valueBox','tree','wrapper','labelWidget'}) do r[name]=widget() end
  r.surface.children={r.slider};r.slider.parent=r.surface;r.label='Ability'
  r.valueBox.bOverride_WidthOverride=false
  return r
@@ -162,7 +162,23 @@ print('PASS failed pair receipt restores row-owned state so later adoption remai
 
 local fixedDescriptor={providerId='P',settingId='Fixed',fixedMode='Hold',minimum=0,maximum=254}
 local fixedRow=row()
+local fixedTranslation,fixedAlignment
+function fixedRow.overlay:AddChildToOverlay(child)
+ self.children[#self.children+1]=child;child.parent=self
+ local slot=widget()
+ function slot:SetHorizontalAlignment(value)fixedAlignment=value end
+ return slot
+end
+local oldConstruct=StaticConstructObject
+StaticConstructObject=function(...)
+ local value=oldConstruct(...)
+ function value:SetRenderTranslation(position)self.translation=position end
+ return value
+end
 local fixedInstance=assert(M.decorate(fixedRow,fixedDescriptor,function() end))
+StaticConstructObject=oldConstruct
+assert(fixedInstance.keyBox.parent==fixedRow.overlay and fixedAlignment==3)
+assert(fixedInstance.keyBox.translation.X==-158,'fixed keys must share the paired host column')
 assert(fixedRow.labelBox.WidthOverride==330 and fixedRow.surfaceBox.WidthOverride==254 and fixedRow.valueBox.WidthOverride==0)
 local fixedLabel=fixedInstance.keyBox.children[1].children[8].children[1]
 assert(fixedLabel.text=='Hold' and fixedLabel.outer==fixedRow.tree)
@@ -171,7 +187,7 @@ assert(fixedInstance.keyBox.children[1].children[8].WidthOverride==150)
 local adoptedFixed=assert(M.adopt(fixedRow,fixedDescriptor,nil,clicks))
 assert(not adoptedFixed.pair and adoptedFixed.descriptor.fixedMode=='Hold')
 assert(M.restore(fixedInstance,function() return true end))
-assert(#fixedRow.surface.children==1)
+assert(#fixedRow.surface.children==1 and #fixedRow.overlay.children==0)
 print('PASS absent-pair fixed label ownership, adoption and rollback')
 
 local blankRow=row()

@@ -200,9 +200,15 @@ function M.decorate(row,descriptor,log,host)
     local ss=need(keyOverlay:AddChildToOverlay(selector),'selector slot')
     ss:SetHorizontalAlignment(0); ss:SetVerticalAlignment(0)
 
-    local keyHost=host or row.surface
+    local fixedColumn=not host and descriptor.fixedMode and not descriptor.modeId
+    local keyHost=host or (fixedColumn and row.overlay) or row.surface
     local hostSlot=need(keyHost:AddChildToOverlay(keyBox),'key host slot')
-    hostSlot:SetHorizontalAlignment(1); hostSlot:SetVerticalAlignment(2)
+    hostSlot:SetHorizontalAlignment(fixedColumn and 3 or 1); hostSlot:SetVerticalAlignment(2)
+    if fixedColumn then
+        -- Match the paired row's key host: 150px mode column plus 8px gap.
+        -- Anchor to the full row, independently of the stock HorizontalBox.
+        keyBox:SetRenderTranslation({X=-158,Y=0})
+    end
 
     pcall(function() row.slider:SetRenderOpacity(0) end)
     pcall(function() row.valueWidget:SetRenderOpacity(0) end)
@@ -318,7 +324,8 @@ end
 -- Called only after page readiness. Existing children are the authority for
 -- decoration presence; runtime bindings can be discarded at every scope change.
 function M.adopt(row,descriptor,modeRow,clicks)
-    local keyHost=modeRow and modeRow.pairHost or row.surface
+    local keyHost=modeRow and modeRow.pairHost
+        or (descriptor.fixedMode and not descriptor.modeId and row.overlay) or row.surface
     for i=0,Discovery.childCount(keyHost)-1 do
         local box=Discovery.childAt(keyHost,i)
         local overlay=Discovery.contentOf(box)
@@ -594,7 +601,10 @@ local function transactional(fn,rowOf,isPair)
         local args={...}
         local row=rowOf(args)
         local root=row.surface
-        if not isPair and valid(args[4]) then root=args[4] end
+        if not isPair then
+            if valid(args[4]) then root=args[4]
+            elseif args[2].fixedMode and not args[2].modeId then root=row.overlay end
+        end
         local receipt={saved={},roots={}}
         local priorState,priorText
         if isPair then
@@ -618,7 +628,7 @@ local function transactional(fn,rowOf,isPair)
         end
         if isPair then save(args[2].wrapper,'GetVisibility','SetVisibility') end
         local count=Discovery.childCount(root)
-        for i=0,count-1 do save(Discovery.childAt(row.surface,i),'GetRenderOpacity','SetRenderOpacity') end
+        for i=0,Discovery.childCount(row.surface)-1 do save(Discovery.childAt(row.surface,i),'GetRenderOpacity','SetRenderOpacity') end
         local ok,result,err=pcall(fn,table.unpack(args))
         local recorded,recordError=pcall(function()
             for i=count,Discovery.childCount(root)-1 do

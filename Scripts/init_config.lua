@@ -71,7 +71,7 @@ function M.defaultSources(manifest,settings)
     local rules,names={},{}
     for _,setting in ipairs(settings) do
         if setting.id then byId[setting.id]=setting end
-        setting.mcDefaultFrom=nil;setting.mcDefaultMap=nil;setting.mcDefaultRules=nil
+        setting.mcDefaultFrom=nil;setting.mcDefaultMap=nil;setting.mcDefaultRules=nil;setting.mcValueMap=nil
     end
     local function finish()
         if not current then return end
@@ -100,6 +100,18 @@ function M.defaultSources(manifest,settings)
             else
                 assert(not current.DefaultFromMap,'DefaultFromMap requires DefaultFrom')
             end
+            if current.ValueMap then
+                assert(setting.section,'ValueMap requires explicit ConfigSection')
+                assert(setting.kind=='picker','ValueMap requires a picker')
+                local map={}
+                for entry in (current.ValueMap..';'):gmatch('(.-);') do
+                    local a,b=entry:match('^%s*([^:]+):([^:]+)%s*$')
+                    local from,to=number(a,'ValueMap source'),number(b,'ValueMap destination')
+                    assert(map[from]==nil,'duplicate ValueMap source')
+                    map[from]=to
+                end
+                setting.mcValueMap=map
+            end
         end
     end
     for line in (manifest..'\n'):gmatch('([^\n]*)\n') do
@@ -113,7 +125,7 @@ function M.defaultSources(manifest,settings)
             if key then
                 key=trim(key)
                 assert(key~='rule','reserved migration field')
-                if current.rule or key=='DefaultFrom' or key=='DefaultFromMap' then
+                if current.rule or key=='DefaultFrom' or key=='DefaultFromMap' or key=='ValueMap' then
                     assert(current[key]==nil,'duplicate migration field '..key)
                 end
                 current[key]=trim(value)
@@ -136,6 +148,39 @@ function M.defaultSources(manifest,settings)
         assert(#setting.mcDefaultRules<32,'too many DefaultRules per setting')
         table.insert(setting.mcDefaultRules,rule)
     end
+end
+
+-- Rewrite only declared obsolete picker values; keep every other byte intact.
+function M.remapExisting(original,settings,choices)
+    if original==nil then return nil end
+    local maps={}
+    for _,setting in ipairs(settings) do
+        if setting.mcValueMap then
+            for _,destination in pairs(setting.mcValueMap) do
+                assert(choices.index(setting,destination),'ValueMap destination outside declared choices')
+            end
+            maps[setting.section..'\0'..setting.key]=setting.mcValueMap
+        end
+    end
+    if not next(maps) then return original end
+    local lines,section={},''
+    for full in (original..'\n'):gmatch('([^\n]*\n)') do
+        local line=full:sub(1,-2)
+        local heading=trim(line):match('^%[([^%]]+)%]$')
+        if heading then section=trim(heading) end
+        local before,value,after=line:match('^(%s*[^=;#]+%s*=%s*)(%-?%d+)(.*)$')
+        if before then
+            local key=trim(assert(before:match('^%s*([^=]+)=')))
+            local map=maps[section..'\0'..key]
+            local replacement=map and map[tonumber(value)]
+            if replacement~=nil and (after=='' or after:match('^%s*[;#]') or after:match('^%s*\r$')) then
+                line=before..string.format('%.17g',replacement)..after
+            end
+        end
+        lines[#lines+1]=line..'\n'
+    end
+    local result=table.concat(lines)
+    return result:sub(1,-2)
 end
 
 -- Preserve all original bytes. Insert only absent declared assignments into
@@ -315,7 +360,7 @@ function M.plan(provider,manifest,choices,fs,settings)
         path=target
     end
     local original=fs.read(path)
-    local content=M.merge(original,settings,choices)
+    local content=M.merge(M.remapExisting(original,settings,choices),settings,choices)
     -- Validate the result through DMM itself before any filesystem mutation.
     -- This module instance is private, never DMM's live require() state.
     local saved=choices.fs
@@ -336,7 +381,8 @@ function M.install(choices,fs)
     local planning=false
     choices.parse=function(content)
         local settings=parse(content)
-        if settings[1] and (content:match('DefaultFrom%s*=') or content:match('DefaultFromMap%s*=') or content:match('%[DefaultRule%.')) then
+        if settings[1] and (content:match('DefaultFrom%s*=') or content:match('DefaultFromMap%s*=')
+            or content:match('ValueMap%s*=') or content:match('%[DefaultRule%.')) then
             settings[1].mcMigrationDeclared=true
         end
         return settings
