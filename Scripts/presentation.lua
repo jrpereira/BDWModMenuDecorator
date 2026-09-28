@@ -287,14 +287,16 @@ function M.install(choices,controls,pages)
                     local tabs=new('HorizontalBox')
                     row.mcTabs={}
                     local count=#setting.values
+                    local providerLink=setting.mcNavigation and setting.mcLinkProvider
                     local paired=setting.mcPairTargetId~=nil
                     local disablesKey=paired and count>=3 and setting.values[3]==-1
-                    local totalWidth=(paired or setting.mcReferenceLabel) and 150 or (setting.mcTabsWidth or math.min(384,110*count))
+                    local totalWidth=providerLink and 160 or
+                        ((paired or setting.mcReferenceLabel) and 150 or (setting.mcTabsWidth or math.min(384,110*count)))
                     local keySpace=paired and 104 or 0
                     local defaultSpace=paired and 104 or 0
                     local choices={}
                     for n,value in ipairs(setting.values) do
-                        if not paired or n~=2 or count<2 then
+                        if (not providerLink or n==1) and (not paired or n~=2 or count<2) then
                             local choice={value=value,label=setting.labels[n],isDefault=disablesKey and n==3}
                             if paired and n==1 and count>=2 then
                                 choice.toggleValues={setting.values[1],setting.values[2]}
@@ -720,6 +722,7 @@ function M.install(choices,controls,pages)
                         if type(indent)~='number' or indent< -80 or indent>80 then indent=0 end
                         M.style(label,browserLevel,api)
                         label.Slot:SetPadding({Left=indent,Top=4,Right=12,Bottom=4})
+                        if provider and provider.mcBrowserHeading then api.setText(label,provider.name) end
                     end
                 end
             end

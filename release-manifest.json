@@ -3,10 +3,12 @@
   "version_file": "Scripts/main.lua",
   "version_pattern": "local VERSION\\s*=\\s*[\\\"\\x27]([^\\\"\\x27]+)",
   "files": {
+    "mod_settings.ini": "mod_settings.ini",
     "Scripts/dmm_extension.lua": "Scripts/dmm_extension.lua",
     "Scripts/navigation.lua": "Scripts/navigation.lua",
     "Scripts/mapped_presets.lua": "Scripts/mapped_presets.lua",
     "Scripts/presentation.lua": "Scripts/presentation.lua",
+    "Scripts/browser_groups.lua": "Scripts/browser_groups.lua",
     "Scripts/click_delivery.lua": "Scripts/click_delivery.lua",
     "Scripts/dmm_binding.lua": "Scripts/dmm_binding.lua",
     "Scripts/dmm_bootstrap.lua": "Scripts/dmm_bootstrap.lua",

@@ -1,0 +1,87 @@
+-- Arrange ModCore providers as a browser tree before DMM builds its rows.
+local M = {}
+local ROOT_ID, OLD_FOUNDATIONS_ID = 'ModCore.browser.root', 'ModCore.browser.foundations'
+
+local function heading(id, name, level, indent)
+    return {id=id, name=name, author='ModCore', version='',
+        description=name .. ' groups related ModCore pages.',
+        choices={}, settingsCount=0, testOnly=false, noSettings=true, mcBrowserHeading=true,
+        mcBrowserLevel=level, mcBrowserIndent=indent}
+end
+
+function M.arrange(providers)
+    local corePages, modules, remaining = {}, {}, {}
+    local first, seen = nil, {}
+    for _, provider in ipairs(providers) do
+        local id = provider.id
+        if id ~= ROOT_ID and id ~= OLD_FOUNDATIONS_ID then
+            assert(not seen[id], 'duplicate browser provider: ' .. tostring(id))
+            seen[id] = true
+            local foundation = id == 'ModCoreControls' or id == 'ModCoreSettings'
+            local module = id == 'ModCoreTemplates.module.Fangdango' or id == 'Preymonition'
+            if foundation or module then
+                first = first or #remaining + 1
+                if foundation then corePages[id] = provider else modules[id] = provider end
+            else
+                remaining[#remaining + 1] = provider
+            end
+        end
+    end
+    if not first then return remaining end
+    local group = {heading(ROOT_ID, 'ModCore', 2, 0)}
+    if next(corePages) then
+        for _, id in ipairs({'ModCoreControls', 'ModCoreSettings'}) do
+            local provider = corePages[id]
+            if provider then
+                provider.mcBrowserLevel, provider.mcBrowserIndent = 4, 20
+                group[#group + 1] = provider
+            end
+        end
+    end
+    for _, id in ipairs({'ModCoreTemplates.module.Fangdango', 'Preymonition'}) do
+        local provider = modules[id]
+        if provider then
+            provider.mcBrowserLevel, provider.mcBrowserIndent = 4, 20
+            group[#group + 1] = provider
+        end
+    end
+    for index = #group, 1, -1 do table.insert(remaining, first, group[index]) end
+    for index, provider in ipairs(remaining) do providers[index] = provider end
+    for index = #remaining + 1, #providers do providers[index] = nil end
+    return providers
+end
+
+function M.install(pages)
+    if pages.mcBrowserGroupsVersion then return false end
+    assert(type(pages)=='table' and type(pages.build)=='function', 'DMM pages API unavailable')
+    local build = pages.build
+    pages.build = function(tree, providers, status, api)
+        M.arrange(providers)
+        local page = build(tree, providers, status, api)
+        if type(page)=='table' and type(page.setFilter)=='function' then
+            local setFilter = page.setFilter
+            function page:setFilter(compatibleOnly)
+                setFilter(self, compatibleOnly)
+                if not self.compatibleOnly then return end
+                local rows = {}
+                for _, row in ipairs(self.allRows) do
+                    local provider = providers[row.providerIndex]
+                    if provider.mcBrowserHeading or not provider.noSettings then
+                        rows[#rows + 1] = row
+                        row.index = #rows
+                    end
+                end
+                self.rows = rows
+                self:refreshHint()
+                self.scroll:ScrollToStart()
+                self:window(0, true)
+            end
+            page:setFilter(page.compatibleOnly)
+        end
+        return page
+    end
+    pages.mcBrowserGroupsVersion = 1
+    return true
+end
+
+return M

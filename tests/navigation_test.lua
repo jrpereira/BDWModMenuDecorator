@@ -73,7 +73,6 @@ assert(#withIgnored==2 and withIgnored[1].mcNavigation,
     'Unsupported settings ignored by DMM must not break navigation parsing')
 local plan=assert(InitConfig.plan(provider,manifest,Choices,Choices.fs,items))
 assert(not plan.content:find('View=',1,true),'config initialization must omit navigation')
-print('Navigation picker remains transient, controls visibility and never writes a config key')
 local references=manifest
 for slot=1,4 do
     references=references..('\n[Setting.Reference%d]\nId=Reference%d\nType=picker\nLabel=Slot %d\nGroup=References\nDefault=0\nPresetValues=0|1\nPresetLabels=Slot %d|Slot %d\nmcReadOnly=1\n'):format(slot,slot,slot+4,slot,slot)
@@ -94,3 +93,19 @@ displayModel:reset();displayModel:restore()
 assert(displayModel.pending[2]==7 and displayModel.pending[6]==0)
 local displayPlan=assert(InitConfig.plan(displayProvider,references,Choices,Choices.fs,displayItems))
 assert(not displayPlan.content:find('Reference',1,true),'references never receive persistent keys')
+
+local visualFile=assert(io.open('mod_settings.ini','rb'))
+local visuals=visualFile:read('*a');visualFile:close()
+local visualItems=Choices.parse(visuals)
+assert(#visualItems==5)
+for _,item in ipairs(visualItems) do assert(item.mcNavigation and not item.file) end
+local visualProvider={id='ModCoreSettings',path='mod_settings.ini',choices=visualItems}
+local visualModel=Choices.open(visualProvider)
+assert(not visualModel.error and not visualModel:dirty())
+visualModel:set(1,0);visualModel:set(4,2)
+assert(not visualModel:dirty() and visualModel.pending[1]==0 and visualModel.pending[4]==2)
+local reopened=Choices.open(visualProvider)
+assert(not reopened.error and reopened.pending[1]==1 and reopened.pending[4]==0)
+assert(InitConfig.plan(visualProvider,visuals,Choices,Choices.fs,visualItems)==nil,
+    'Visuals preview must not create a config file')
+print('Navigation and Visuals pickers remain transient without config writes')

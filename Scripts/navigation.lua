@@ -3,7 +3,7 @@ local M={version=1}
 local function trim(value) return (value or ''):match('^%s*(.-)%s*$') end
 
 function M.parse(content,items)
-    local current,marked,sections=nil,0,0
+    local current,sections=nil,0
     local byId={}
     for _,item in ipairs(items) do byId[item.id]=item end
     local function finish()
@@ -23,8 +23,6 @@ function M.parse(content,items)
             item.values,item.labels={item.default},{item.labels[1]}
             item.mcReadOnly=true
         else
-            marked=marked+1
-            assert(marked<=1,'only one navigation picker per provider')
             item.mcNavigation=true
         end
     end

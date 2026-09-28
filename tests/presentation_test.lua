@@ -239,6 +239,23 @@ ui.mcHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
 assert(#row.mcTabs==2 and row.mcLabel.Font.Size==16)
+items[1].mcNavigation,items[1].mcLinkProvider=true,'ModCoreControls'
+local linked=controls.build(widget(),{{id='ModCoreTemplates.module.Fangdango',choices=items}},api)
+linked.mcHeaderHost=widget()
+linked:show(1)
+assert(#linked.panels[1].rows[1].mcTabs==1
+    and linked.panels[1].rows[1].mcTabs[1].label.text=='Consumables'
+    and linked.panels[1].rows[1].mcTabs[1].widget:GetParent().WidthOverride==160,
+    'provider links must display one clickable tab')
+local linkSet=linked.model.set
+function linked.model:set(index,value)
+    if index==1 and value==0 then self.linkActivated=true end
+    return linkSet(self,index,value)
+end
+linked.panels[1].rows[1].mcTabs[1].widget.clicked=true
+linked:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(linked.model.linkActivated,'the single link tab must activate even at its default value')
+items[1].mcNavigation,items[1].mcLinkProvider=nil,nil
 assert(row.mcTabs[1].label.Slot.HorizontalAlignment==0 and row.mcTabs[1].label.Slot.VerticalAlignment==2,
     'Tab labels must fill their allocated button slots for centered text justification')
 assert(row.mcTabs[1].selected and not row.mcTabs[2].selected)
