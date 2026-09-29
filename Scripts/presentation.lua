@@ -272,6 +272,7 @@ function M.install(choices,controls,pages)
                 local level=setting.mcFont
                 if level==1 and providers[index].id=='ModCoreTemplates' then level=2 end
                 M.style(row.mcLabel,level,api)
+                if level==2 then api.Theme.font(row.mcLabel,api.theme,20) end
                 if level==1 or level==2 then
                     local slot=setting.kind=='toggle' and row.widget:GetContent().Slot or row.mcLabel.Slot
                     local padding=slot.Padding
@@ -746,7 +747,15 @@ function M.install(choices,controls,pages)
                         local indent=provider and provider.mcBrowserIndent or 0
                         if type(indent)~='number' or indent< -80 or indent>80 then indent=0 end
                         M.style(label,browserLevel,api)
-                        label.Slot:SetPadding({Left=indent,Top=4,Right=12,Bottom=4})
+                        if row.wrapper then
+                            row.wrapper:SetWidthOverride(584-2*indent)
+                            local slot=row.wrapper.Slot
+                            local padding=slot.Padding
+                            slot:SetPadding({Left=indent,Top=padding.Top,
+                                Right=padding.Right,Bottom=padding.Bottom})
+                        end
+                        label.Slot:SetPadding({Left=row.wrapper and 0 or indent,
+                            Top=4,Right=12,Bottom=4})
                         if provider and provider.mcBrowserHeading then api.setText(label,provider.name) end
                     end
                 end

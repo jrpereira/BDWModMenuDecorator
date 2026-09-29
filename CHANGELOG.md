@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+- Enlarge level-two setting labels, including Control Layout and Control Map,
+  and inset submodule browser highlights with their rows.
 - Bind queued picker presses to the preceding hovered control sample and discard
   them when another control is hovered at delivery, avoiding cross-control clicks
   without adding native widget access to the input callback.

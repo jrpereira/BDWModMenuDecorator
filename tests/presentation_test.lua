@@ -155,10 +155,14 @@ local pages={build=function(tree,providers,status,a)
         return addChild(self,child==titleWrapper and title or child)
     end
     local allRows={}
+    local browserRows=widget()
     for index,provider in ipairs(providers) do
         local button,label=a.button(tree,provider.name)
         label.Slot:SetPadding({Left=20,Top=4,Right=12,Bottom=4})
-        allRows[#allRows+1]={widget=button,providerIndex=index}
+        local wrapper=widget();wrapper:SetWidthOverride(584);wrapper:SetContent(button)
+        browserRows:AddChild(wrapper)
+        wrapper.Slot:SetPadding({Left=0,Top=0,Right=8,Bottom=0})
+        allRows[#allRows+1]={widget=button,wrapper=wrapper,providerIndex=index}
     end
     local page={filterButton=filterButton,filterLabel=filterLabel,browserList=browserList,allRows=allRows,
         controls={},modTitle=title,mcTestControlArea=parent,mcTestDivider=divider}
@@ -236,13 +240,15 @@ assert(page.filterLabel.Slot.Padding.Left==0 and modLabel.Slot.Padding.Left==0,
 local categoryLabel=page.allRows[2].widget:GetContent()
 assert(categoryLabel.text=='Menu Controls' and categoryLabel.Font.Size==14 and categoryLabel.color=='body',
     'Category modules must accept level-four browser styling')
-assert(categoryLabel.Slot.Padding.Left==20,
-    'Category modules must accept a small browser indentation')
+assert(categoryLabel.Slot.Padding.Left==0
+    and page.allRows[2].wrapper.Slot.Padding.Left==20
+    and page.allRows[2].wrapper.WidthOverride==544,
+    'Submodule button and highlight must both start at the browser indentation')
 local ui=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
 ui.mcHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
-assert(#row.mcTabs==2 and row.mcLabel.Font.Size==16)
+assert(#row.mcTabs==2 and row.mcLabel.Font.Size==20)
 items[1].mcNavigation,items[1].mcLinkProvider=true,'ModCoreControls'
 local linked=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
 linked.mcHeaderHost=widget()
@@ -422,7 +428,7 @@ templatePage:show(1)
 assert(not templatePage.panels[1].rows[1].mcHeader
     and templatePage.panels[1].rows[1].wrapper:GetParent()==templatePage.panels[1].scroll
     and templatePage.panels[1].rows[1].mcLabel.visible~=1
-    and templatePage.panels[1].rows[1].mcLabel.Font.Size==16
+    and templatePage.panels[1].rows[1].mcLabel.Font.Size==20
     and templatePage.panels[1].rows[1].mcLabel.Slot.Padding.Left==0,
     'Template page must keep its level-two picker in an unindented row')
 local pickerHeader=controls.build(widget(),{{id='ModCoreControls',choices=items}},api)
@@ -443,9 +449,13 @@ browserProviders.lazy=true
 local recycled=pages.build(widget(),browserProviders,nil,api)
 local recycledLabel=recycled.mounted[1].widget:GetContent()
 assert(recycledLabel.Font.Size==16)
-assert(recycled:window(2) and recycledLabel.Font.Size==14 and recycledLabel.Slot.Padding.Left==20,
+assert(recycled:window(2) and recycledLabel.Font.Size==14 and recycledLabel.Slot.Padding.Left==0
+    and recycled.mounted[1].wrapper.Slot.Padding.Left==20
+    and recycled.mounted[1].wrapper.WidthOverride==544,
     'Recycled browser rows must take the new provider style')
-assert(recycled:window(1) and recycledLabel.Font.Size==16 and recycledLabel.Slot.Padding.Left==0,
+assert(recycled:window(1) and recycledLabel.Font.Size==16 and recycledLabel.Slot.Padding.Left==0
+    and recycled.mounted[1].wrapper.Slot.Padding.Left==0
+    and recycled.mounted[1].wrapper.WidthOverride==584,
     'Recycling must also clear the previous provider indentation')
 print('PASS nested headings, tab clicks, selected state, font levels, dynamic labels/order, page reuse and closed-menu inactivity')
 items[1].values,items[1].labels,items[1].default={0},{'Slot 1'},0
