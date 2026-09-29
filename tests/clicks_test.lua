@@ -2,7 +2,6 @@ package.path='Scripts/?.lua;'..package.path
 local callback,registered=nil,0
 Key={LEFT_MOUSE_BUTTON=1}
 RegisterKeyBind=function(key,fn) assert(key==Key.LEFT_MOUSE_BUTTON);callback=fn;registered=registered+1 end
-FName=function(s) return s end
 local errors={}
 local router=require('click_delivery').new(function(e) errors[#errors+1]=e end)
 local function button(id,name)
@@ -14,53 +13,69 @@ local function button(id,name)
  return b
 end
 local function emit() callback() end
-local i={};local b=button(1,'owned')
-assert(router:open('hostA'));router:attach(i,b);i.pair={button=b};b.hovered=true
-emit();router:deliver(i);assert(i.pendingClicks==1)
-print('PASS one pointer press produces exactly one paired-picker change request')
-local clear=button(3,'clear');clear.hovered=true;b.hovered=false
- i.optional={button=clear}
-router:attach(i,clear,'pendingOptionalClicks');emit();router:deliver(i)
-assert(i.pendingOptionalClicks==1 and i.pendingClicks==1)
-print('PASS a distinct optional-key click is routed to its clear request')
-i.pendingOptionalClicks=0;clear.hovered=false;b.hovered=true
-i.pendingClicks=0
-for n=1,3 do emit() end
-router:deliver(i)
-assert(i.pendingClicks==3)
-print('PASS three clicks between monitor samples are queued and delivered on the game-thread sample')
-b.hovered=false;emit();router:deliver(i);router:discard();assert(i.pendingClicks==3)
-print('PASS clicks outside an owned hovered picker are discarded')
-local j={};local other=button(2,'other');j.pair={button=other};other.hovered=true
-router:attach(j,other);emit();router:deliver(i);router:deliver(j)
-assert(i.pendingClicks==3 and j.pendingClicks==1)
-print('PASS a click is delivered only to the different row that is currently hovered')
-router:open('hostB');emit();assert(i.pendingClicks==0)
-router:open('hostA');b.hovered=true;emit();router:deliver(i);assert(i.pendingClicks==1 and registered==1)
+local i={};local pair=button(1,'pair');i.pair={button=pair}
+assert(router:open('hostA'));router:attach(i,pair)
+pair.hovered=true;router:sample()
+for _=1,3 do emit() end
+router:deliver(i);assert(i.pendingClicks==3)
+print('PASS sampled pair receives each queued press once')
+
+local clear=button(3,'clear');i.optional={button=clear}
+router:attach(i,clear,'pendingOptionalClicks')
+pair.hovered=false;clear.hovered=true;router:sample()
+emit();router:deliver(i)
+assert(i.pendingOptionalClicks==1 and i.pendingClicks==3)
+print('PASS optional clear and pair retain distinct click targets')
+
+local j={};local other=button(2,'other');j.pair={button=other}
+router:attach(j,other)
+clear.hovered=false;pair.hovered=true;router:sample()
+emit();pair.hovered=false;other.hovered=true
+router:deliver(i);router:deliver(j);router:discard()
+assert(i.pendingClicks==3 and j.pendingClicks==nil)
+print('PASS movement from pair A to row B cannot deliver A click to B')
+
+router:sample();emit();other.hovered=false;clear.hovered=true
+router:deliver(i);router:deliver(j);router:discard()
+assert(i.pendingOptionalClicks==1 and j.pendingClicks==nil)
+print('PASS movement from another row to optional clear cannot clear the key')
+
+pair.hovered=true;clear.hovered=false;router:sample()
+emit();pair.hovered=false;clear.hovered=true
+emit();router:deliver(i);router:discard()
+assert(i.pendingClicks==3 and i.pendingOptionalClicks==1)
+print('PASS alternating clicks between samples are discarded when attribution is ambiguous')
+
+pair.hovered=true;clear.hovered=true;router:sample()
+emit();router:deliver(i);router:discard()
+assert(i.pendingClicks==3 and i.pendingOptionalClicks==1)
+print('PASS overlapping hovered targets do not receive a click')
+
+clear.hovered=false;pair.hovered=true;router:sample()
+emit();router:open('hostB');assert(i.pendingClicks==0 and router.pointerClicks==0)
+emit();router:open('hostA');router:deliver(i);assert(i.pendingClicks==0)
+router:sample();emit();router:deliver(i);assert(i.pendingClicks==1 and registered==1)
 router:close();assert(i.pendingClicks==0)
-callback()
-assert(#errors==0)
-print('PASS host changes discard old clicks; closed callback performs no native widget access')
-router:open('hostA');router:deliver(i);assert(i.pendingClicks==0)
-print('PASS a click queued before close is not delivered after reopen')
-emit();router:deliver(i);assert(i.pendingClicks==1)
-router:forget(i);emit();router:deliver(i);router:discard();assert(i.pendingClicks==0)
-print('PASS surviving host reuses binding; forgotten instance cannot receive clicks')
-router:attach(i,b);emit();router:deliver(i)
+callback();assert(#errors==0)
+print('PASS scope changes clear sampled and queued targets without callback UObject access')
+
+router:open('hostA');router:sample();emit();router:forget(i)
+router:deliver(i);assert(i.pendingClicks==0 and router.pointerClicks==0)
+router:attach(i,pair);router:sample();emit();router:deliver(i);assert(i.pendingClicks==1)
 router:retire('foreign');assert(i.pendingClicks==1)
 router:retire('hostA');emit();assert(i.pendingClicks==0 and next(router.owners)==nil)
-router:open('hostA');router:attach(i,b);emit();router:deliver(i);router:retire(nil)
-assert(i.pendingClicks==0 and next(router.owners)==nil)
-print('PASS retired host/session releases receiver records and pending clicks')
-router:close()
+print('PASS forgotten and retired ownership cannot receive queued presses')
+
+router:open('hostA');router:attach(i,pair);router:sample()
 for _=1,32 do callback() end
-assert(router.pointerClicks==0 and registered==1)
-router:open('hostA');for _=1,32 do callback() end
 assert(router.pointerClicks==16 and registered==1)
 router:close();assert(router.pointerClicks==0)
-print('PASS callback is bounded, inactive outside settings and registered only once across reopen')
+for _=1,32 do callback() end
+assert(router.pointerClicks==0)
+print('PASS callback is bounded, inactive outside settings and registered once')
+
 Key=nil;RegisterKeyBind=nil
 local unavailable=require('click_delivery').new(function(e) errors[#errors+1]=e end)
 assert(not unavailable:open('hostA'))
-assert(not pcall(unavailable.attach,unavailable,i,b))
+assert(not pcall(unavailable.attach,unavailable,i,pair))
 print('PASS unavailable mouse callback fails closed before proxy ownership')

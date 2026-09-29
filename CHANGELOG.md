@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- Bind queued picker presses to the preceding hovered control sample and discard
+  them when another control is hovered at delivery, avoiding cross-control clicks
+  without adding native widget access to the input callback.
 - Dim unbound key labels and add `mcOptional=1` key rows with a click-to-clear
   `optional [x]` control.
 - Expand key capture to the standard virtual-key keyboard, keypad, punctuation,

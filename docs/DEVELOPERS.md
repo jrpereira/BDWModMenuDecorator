@@ -249,8 +249,8 @@ Control synchronization remains at 50 ms within that scope and stops when no usa
 from the current host root rather than repeated global lookups for each control. Each eligible update performs exact owner/host lookups; there is no global widget enumeration
 or permanently running discovery timer. Closing/loading revokes deferred work;
 obsolete queued callbacks drain without UObject access or rescheduling.
-Picker clicks use one UE4SS left-mouse callback that queues primitive Lua state. The existing menu-scoped game-thread update delivers queued clicks only to the currently hovered owned proxy button.
-No UObject is accessed by the key callback and no press-state sampling is used. Native click delivery and lifecycle integration still need
+Picker clicks use one UE4SS left-mouse callback that queues primitive Lua state. Each menu-scoped game-thread update samples the hovered owned proxy button. A queued press is delivered only if that same button remains hovered at the next update; movement to another target discards it instead of changing the wrong setting. Pointer movement away and back entirely between updates cannot be observed, and a click during that interval can still be attributed to the sampled button.
+No UObject is accessed by the key callback and no press-state sampling is used. Click routing and lifecycle integration still need
 in-game validation; unavailable pointer input leaves the stock mode row available.
 
 For your integration, test a key-only change, a mode-only change,

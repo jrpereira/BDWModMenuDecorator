@@ -203,6 +203,7 @@ function M.install(log)
             if not instance.disabled then usable=usable+1 end
         end
         clicks:discard()
+        clicks:sample()
         if usable==0 then return end
         if allowed() then schedule(path,epoch,UPDATE_MS) end
     end
