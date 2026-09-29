@@ -3,7 +3,7 @@ local installs={}
 local shared={}
 ModRef={SetSharedVariable=function(_,key,value) shared[key]=value end}
 local originalLoadfile=loadfile
-debug.getinfo=function() return {source='@C:/Mods/_ModCore_Settings/Scripts/dmm_extension.lua'} end
+debug.getinfo=function() return {source='@C:/Mods/_ModCore_1_Settings/Scripts/dmm_extension.lua'} end
 loadfile=function(path)
     loaded[#loaded+1]=path
     local name=assert(path:match('([^/\\]+)%.lua$'))

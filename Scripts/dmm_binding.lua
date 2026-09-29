@@ -29,6 +29,7 @@ function M.install(log)
             end
         end
         add(instance,{'selector','keyBox','keyFrame','keyInner','keyText','stateWidget','modeNav'})
+        if instance.optional then add(instance.optional,{'button','text'}) end
         add(instance.row,{'slider','wrapper','labelWidget','valueWidget','modeState'})
         if instance.pair then
             add(instance.pair,{'button','inner','nav','valueWidget','text'})
@@ -56,6 +57,7 @@ function M.install(log)
             local modeValues=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.values
             local descriptor=metadata and metadata.mcKeybind and metadata.kind=='slider' and {
                 providerId=providerId,settingId=metadata.id,minimum=metadata.minimum,maximum=metadata.maximum,
+                optional=metadata.mcOptional,
                 fixedMode=metadata.mcFixedMode,modeId=modeRow and metadata.mcPairId or nil,
                 modeOptions=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.labels or nil,
                 modeValues=modeValues,disabledMode=modeValues and (modeValues[2]==-2 and -2 or modeValues[3]==-1 and -1) or nil,
@@ -66,7 +68,7 @@ function M.install(log)
                     if modeRow and not modeRow.pairHost then
                         ok,instance,detail=false,nil,'paired picker host unavailable'
                     else
-                        ok,instance,detail=pcall(KeySelector.decorate,row,descriptor,log,modeRow and modeRow.pairHost or nil)
+                        ok,instance,detail=pcall(KeySelector.decorate,row,descriptor,log,modeRow and modeRow.pairHost or nil,clicks)
                     end
                 end
                 if ok and instance then

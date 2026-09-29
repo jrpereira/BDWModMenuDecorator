@@ -26,7 +26,7 @@ or depend on UE4SSLuaEventBridge. Input providers can use the bridge separately.
 The current implementation targets Dawnwalker with UE4SS/Lua 5.4 and the tested DMM
 widget layout. It is not a generic settings framework for every Unreal game or DMM
 version. Install DMM and ModCoreSettings as separate UE4SS mods. Do not copy DMM
-source into your mod. Install Settings under `_ModCore_Settings`.
+source into your mod. Install Settings under `_ModCore_1_Settings`.
 Remove the old `AdaptiveModMenu` mod folder before starting the game. ModCoreSettings reads
 `mc*` manifest fields only. Producers must emit this prefix; no legacy metadata translation is installed. Saved setting names and values are unchanged.
 
@@ -35,7 +35,7 @@ Your provider folder needs `mod_settings.ini` and its own configuration file, fo
 ```text
 Mods/
   DawnwalkerModMenu/
-  _ModCore_Settings/
+  _ModCore_1_Settings/
     enabled.txt
     Scripts/main.lua
   ExampleMod/
@@ -220,6 +220,11 @@ setting ID, kind and object reference on each row-owned marker during constructi
 Give every provider a unique `[Mod] Id` and every setting an explicit unique `Id`.
 DMM's duplicate-provider policy remains authoritative.
 
+The ModCore browser groups `ModCoreControls`, `ModCoreSettings`, and providers whose
+IDs start with `ModCoreTemplates.module.`. Other providers can opt into the module
+group by setting `mcBrowserGroup='module'` on their in-memory DMM provider object.
+Unmarked providers keep their normal DMM position.
+
 ModCoreSettings accepts a page only when its row markers identify one provider and contain
 unique setting IDs whose kinds match their DMM setting objects. It does not infer
 identity from row order or localized labels. DMM lifecycle callbacks provide the
@@ -254,12 +259,12 @@ already-dirty Escape cancellation, Reset/Restore, unrelated settings pages, and
 the provider's actual gameplay behavior after Apply. Test transparent surfaces and
 longest mode labels in the real UI. Automated mocks cannot validate those native paths.
 
-## Known limitation: Delete
+## Optional key bindings
 
-Delete-to-clear and its footer hint are not implemented. DMM separately
-routes Delete to Reset through both Lua and CommonUI. Adding a second callback that
-sets zero can race with Reset. Zero remains the unbound representation, but an
-exclusive Delete input route is still required before advertising this shortcut.
+Set `mcOptional=1` on an `mcType=keybind` integer setting when zero represents a
+valid unbound choice. An unbound row shows a dim `optional` marker and dimmed
+`Unbound` text. A bound row shows `optional [x]`; clicking it writes zero to the
+stock DMM slider, so Apply, Reset, dirty state, and persistence remain owned by DMM.
 
 
 ## Menu scope and row ownership
@@ -467,3 +472,5 @@ mcMode=Tap
 ; Include the ordinary range, default and config fields.
 
 ```
+
+`mcOptional=1` can be combined with either a fixed `mcMode` or a paired picker.

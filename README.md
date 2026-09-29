@@ -10,7 +10,8 @@ Less widget plumbing, more actual mod.
 
 ## Features
 
-- Key capture with distinct left/right modifiers and Escape cancellation.
+- Key capture across standard keyboard, keypad, punctuation, media, browser,
+  and mouse buttons, with distinct left/right modifiers and Escape cancellation.
 - Paired key/mode controls, mapped presets, and dirty-setting indicators.
 - Navigation tabs, conditional labels, grouped headings, and typography levels.
 - Missing-default initialization that preserves existing user values.
@@ -19,7 +20,7 @@ Less widget plumbing, more actual mod.
 ## Requirements and installation
 
 Use UE4SS with Lua 5.4 and Dawnwalker Mod Menu. The lifecycle adapter targets
-DMM 1.0.7. Install Settings under `Mods/_ModCore_Settings`, enable it through
+DMM 1.0.7. Install Settings under `Mods/_ModCore_1_Settings`, enable it through
 UE4SS or your mod manager, and disable the old `AdaptiveModMenu` installation.
 Restart after installation or metadata changes.
 
@@ -47,11 +48,14 @@ Default = 75
 ```
 
 The stored value is a Windows virtual-key code. In this example, `75` means K; `0` means unbound.
+Add `mcOptional = 1` when zero is a valid choice. The row then shows `optional`
+to the left of an unbound field and `optional [x]` beside a bound field; clicking
+the latter clears it through DMM's pending setting state.
 
 ## Limits
 
-- Key values are Windows virtual-key codes; modifier chords and gamepad capture
-  are unsupported. Delete-to-clear is not implemented.
+- Key values are Windows virtual-key codes; modifier chords, Escape bindings,
+  mouse-wheel directions, and gamepad capture are unsupported.
 - Active control synchronization runs every 50 ms while the menu scope is usable.
 - DMM widget or lifecycle changes can require compatibility updates.
 

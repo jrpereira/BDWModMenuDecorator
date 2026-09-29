@@ -9,12 +9,13 @@ end
 local function settingIdentity(index,provider,setting)
     local values,labels=setting.values or {},setting.labels or {}
     assert(#values==#labels and #values<=64,'invalid setting identity choices')
-    local fields={'KEM_SETTING_3',tostring(index),identityText(provider.id),identityText(setting.id),
+    local fields={'KEM_SETTING_4',tostring(index),identityText(provider.id),identityText(setting.id),
         setting.kind or '',tostring(setting.minimum or ''),tostring(setting.maximum or ''),
         tostring(setting.step or ''),tostring(setting.decimals or ''),identityText(setting.prefix or ''),
         identityText(setting.suffix or ''),setting.mcKeybind and '1' or '0',
         identityText(setting.mcFixedMode or ''),identityText(setting.mcPairId or ''),
-        tostring(setting.mcTabsWidth or ''),identityText(setting.mcPairTargetId or ''),tostring(#values)}
+        tostring(setting.mcTabsWidth or ''),identityText(setting.mcPairTargetId or ''),
+        setting.mcOptional and '1' or '0',tostring(#values)}
     for _,value in ipairs(values) do fields[#fields+1]=identityText(value) end
     for _,label in ipairs(labels) do fields[#fields+1]=identityText(label) end
     local result=table.concat(fields,'\n')
@@ -96,6 +97,7 @@ function M.parse(content,items)
                 seen[id]=true
                 s.mcFont=level(r.mcLevel)
                 s.mcReadOnly=flag(r.mcReadOnly,'mcReadOnly')
+                s.mcOptional=flag(r.mcOptional,'mcOptional') or false
                 s.mcReferenceLabel=r.mcReferenceLabel
                 if r.mcMode~=nil then
                     assert(r.mcMode=='Tap' or r.mcMode=='Hold','mcMode must be Tap or Hold')
@@ -108,6 +110,7 @@ function M.parse(content,items)
                 local decoration=r.mcType
                 if decoration~=nil then assert(decoration=='tab' or decoration=='keybind','mcType must be tab or keybind') end
                 s.mcKeybind=decoration=='keybind'
+                assert(not s.mcOptional or s.mcKeybind,'mcOptional requires mcType=keybind')
                 if decoration=='tab' then
                     assert(s.kind=='picker','mcType=tab requires a picker')
                     assert(#s.values<=8,'mcType=tab supports at most eight choices')
@@ -227,6 +230,25 @@ function M.install(choices,controls,pages)
             slot:SetHorizontalAlignment(0);slot:SetVerticalAlignment(0)
             return box
         end
+        local function outlined(child,width,height)
+            height=height or 40
+            local overlay=new('Overlay')
+            local childSlot=add(overlay,child)
+            childSlot:SetHorizontalAlignment(0);childSlot:SetVerticalAlignment(0)
+            local edges={}
+            for _,edge in ipairs({{1,height,1,2},{1,height,3,2},{width,1,0,1},{width,1,0,3}}) do
+                local box=new('SizeBox');box:SetWidthOverride(edge[1]);box:SetHeightOverride(edge[2])
+                local line=new('Border')
+                line:SetBrushColor({R=0.55,G=0.52,B=0.46,A=0.55})
+                line:SetVisibility(3)
+                api.need(box:SetContent(line),'KEM picker outline edge')
+                box:SetVisibility(3)
+                local slot=add(overlay,box)
+                slot:SetHorizontalAlignment(edge[3]);slot:SetVerticalAlignment(edge[4])
+                edges[#edges+1]=line
+            end
+            return overlay,edges
+        end
         local function decorate(index)
             local panel=ui.panels[index]
             if panel.mcPresented then return end
@@ -329,11 +351,14 @@ function M.install(choices,controls,pages)
                             visible=background
                         end
                         local choiceWidth=choice.toggleValues and totalWidth/2 or width
+                        local choiceHeight=choice.toggleValues and 32 or 40
+                        local outlinedVisible,outline=outlined(visible,
+                            isDefault and 96 or choiceWidth,choiceHeight)
                         add(isDefault and defaultTabs or tabs,
-                            sized(visible,isDefault and 96 or choiceWidth,choice.toggleValues and 32 or nil))
+                            sized(outlinedVisible,isDefault and 96 or choiceWidth,choiceHeight))
                         row.mcTabs[#row.mcTabs+1]={widget=button,label=label,value=choice.value,
                             toggleValues=choice.toggleValues,toggleLabels=choice.toggleLabels,
-                            pressed=false,pointer=false,background=background}
+                            pressed=false,pointer=false,background=background,outline=outline}
                     end
                     local overlay=row.background:GetParent()
                     if paired and count>=2 and modeCount==1 then

@@ -4,14 +4,14 @@ local Groups=require('browser_groups')
 local providers={
     {id='Other',name='Other'},
     {id='ModCoreControls',name='Controls'},
-    {id='Preymonition',name='Preymonition'},
+    {id='ModCoreTemplates.module.VisualExample',name='Visual Example'},
     {id='ModCoreSettings',name='Visuals'},
-    {id='ModCoreTemplates.module.Fangdango',name='Fangdango'},
+    {id='ExampleOverlay',name='Example Overlay',mcBrowserGroup='module'},
     {id='Last',name='Last'},
 }
 Groups.arrange(providers)
 local expected={'Other','ModCore.browser.root','ModCoreControls','ModCoreSettings',
-    'ModCoreTemplates.module.Fangdango','Preymonition','Last'}
+    'ModCoreTemplates.module.VisualExample','ExampleOverlay','Last'}
 for index,id in ipairs(expected) do assert(providers[index].id==id) end
 assert(#providers==#expected)
 assert(providers[2].name=='ModCore' and providers[2].noSettings)
@@ -55,19 +55,22 @@ assert(#filtered.rows==2 and filtered.rows[1].providerIndex==1
 
 local MctExtension=dofile('../ModCoreTemplates/Scripts/mc/dmm_extension.lua')
 local Choices=dofile(assert(os.getenv('DMM_CHOICES_PATH')))
-local pageManifest='[Mod]\nId=ModCoreTemplates.module.Fangdango\nName=Fangdango\n'
+local pageManifest='[Mod]\nId=ModCoreTemplates.module.VisualExample\nName=Visual Example\n'
     ..'[Setting.Template]\nId=Template\nType=picker\nPresetValues=0|1\nPresetLabels=None|Wheels\nDefault=0\n'
 local menu={aggregate={manifest='[Mod]\nId=ModCoreTemplates\nName=ModCore Templates\n'},
-    pages={{id='ModCoreTemplates.module.Fangdango',name='Fangdango',module='Fangdango',manifest=pageManifest}}}
+    pages={{id='ModCoreTemplates.module.VisualExample',name='Visual Example',module='VisualExample',manifest=pageManifest}}}
 local api={choices=Choices,pages={build=function(_,items) return items end}}
 Groups.install(api.pages)
 MctExtension.new('/tmp/mct-browser-group-test',menu).install(api)
 local combined=api.pages.build({},{{id='ModCoreTemplates',name='ModCore Templates',testOnly=false},
     {id='ModCoreControls',name='Controls',testOnly=false},
     {id='ModCoreSettings',name='Visuals',testOnly=false},
-    {id='Preymonition',name='Preymonition',testOnly=false}},nil,{})
+    {id='ExampleOverlay',name='Example Overlay',mcBrowserGroup='module',testOnly=false}},nil,{})
 local combinedIds={'ModCore.browser.root','ModCoreControls','ModCoreSettings',
-    'ModCoreTemplates.module.Fangdango','Preymonition'}
+    'ModCoreTemplates.module.VisualExample','ExampleOverlay'}
 assert(#combined==#combinedIds)
-for index,id in ipairs(combinedIds) do assert(combined[index].id==id) end
+for index,id in ipairs(combinedIds) do
+    assert(combined[index].id==id,
+        'browser item ' .. index .. ': ' .. combined[index].id .. ' ~= ' .. id)
+end
 print('PASS ModCore browser groups Controls, Visuals and module pages')

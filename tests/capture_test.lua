@@ -72,9 +72,12 @@ i,s,slider=fixture(82,false);capture(i,s,'K')
 slider.value=82/254;i.row.valueWidget.text='82';M.tick(i,log)
 assert(slider.writes==1 and i.keyText.text=='R')
 print('PASS Restore supersedes outstanding capture without stale reassertion')
-i,s,slider=fixture(82,false);capture(i,s,'F24')
+i,s,slider=fixture(82,false);capture(i,s,'F25')
 assert(slider.writes==0 and i.keyText.text=='R')
 print('PASS unsupported capture fails closed')
+i,s,slider=fixture(82,false);capture(i,s,'F24')
+assert(slider.writes==1 and math.abs(slider.value-0x87/254)<1e-8 and i.keyText.text=='F24')
+print('PASS extended function keys can be captured')
 for _,case in ipairs({
     {'LeftShift',0xA0,'Left Shift'},{'RightShift',0xA1,'Right Shift'},
     {'LeftControl',0xA2,'Left Ctrl'},{'RightControl',0xA3,'Right Ctrl'},
@@ -89,9 +92,21 @@ i,s,slider=fixture(82,false);capture(i,s,'K',{ctrl=true})
 assert(slider.writes==0 and i.keyText.text=='R' and events[#events]:find('UNSUPPORTED_KEY_CHORD',1,true))
 print('PASS modifier chords are rejected instead of silently storing their primary key')
 i,s,slider=fixture(0,false)
-assert(i.keyText.text=='Unbound' and slider.writes==0)
+assert(i.keyText.text=='Unbound' and i.keyText.opacity==0.45 and slider.writes==0)
 capture(i,s,'K');assert(slider.writes==1)
+assert(i.keyText.opacity==1)
 print('PASS zero/unbound initializes without writes and can be rebound')
+
+i,s,slider=fixture(82,false)
+local optionalButton=obj({enabled=false});function optionalButton:SetIsEnabled(v) self.enabled=v end
+local optionalText=textWidget('optional')
+i.descriptor.optional=true;i.optional={button=optionalButton,text=optionalText,lastText='optional',bound=false}
+assert(M.tick(i,log) and optionalText.text=='optional [x]' and optionalButton.enabled and optionalText.opacity==0.85)
+i.pendingOptionalClicks=1
+assert(M.tick(i,log) and slider.writes==1 and slider.value==0 and i.keyText.text=='Unbound')
+assert(optionalText.text=='optional' and optionalText.opacity==0.45 and optionalButton.enabled==false)
+assert(i.keyText.opacity==0.45)
+print('PASS optional marker becomes a clear action only while its key is bound')
 i,s,slider=fixture(82,false);capture(i,s,'K')
 for n=1,30 do M.tick(i,log) end
 assert(slider.writes==1 and i.keyText.text=='K' and i.row.labelWidget.text=='Ability')

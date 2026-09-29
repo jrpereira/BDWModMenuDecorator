@@ -142,7 +142,7 @@ local function styleSelecting(instance)
     if valid(instance.keyInner) then pcall(function() instance.keyInner:SetBrushColor({R=0.95,G=0.63,B=0.08,A=0.16}) end) end
 end
 
-function M.decorate(row,descriptor,log,host)
+function M.decorate(row,descriptor,log,host,clicks)
     if not row or not valid(row.slider) then return nil,'invalid numeric row' end
     local tree=row.tree
 
@@ -227,6 +227,29 @@ function M.decorate(row,descriptor,log,host)
     local stateWidget=construct('/Script/UMG.TextBlock',tree)
     stateWidget:SetVisibility(1)
     need(keyOverlay:AddChildToOverlay(stateWidget),'row state slot')
+    local optional
+    if descriptor.optional then
+        local box=construct('/Script/UMG.SizeBox',tree)
+        box:SetWidthOverride(76);box:SetHeightOverride(32)
+        box:SetRenderTranslation({X=-80,Y=0})
+        local overlay=construct('/Script/UMG.Overlay',tree)
+        need(box:SetContent(overlay),'optional key content')
+        local text=construct('/Script/UMG.TextBlock',tree)
+        text:SetJustification(0);text:SetRenderOpacity(0.45)
+        pcall(function() text:SetFont(row.valueWidget.Font) end)
+        assert(setText(text,'optional'),'optional key text unavailable')
+        local textSlot=need(overlay:AddChildToOverlay(text),'optional key text slot')
+        textSlot:SetHorizontalAlignment(0);textSlot:SetVerticalAlignment(2)
+        local button=construct('/Script/UMG.Button',tree)
+        button.IsFocusable=false;button:SetIsEnabled(false)
+        pcall(function() button:SetBackgroundColor({R=0,G=0,B=0,A=0}) end)
+        pcall(function() button:SetRenderOpacity(0) end)
+        local buttonSlot=need(overlay:AddChildToOverlay(button),'optional key hit target slot')
+        buttonSlot:SetHorizontalAlignment(0);buttonSlot:SetVerticalAlignment(0)
+        local slot=need(keyOverlay:AddChildToOverlay(box),'optional key slot')
+        slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(2)
+        optional={box=box,overlay=overlay,text=text,button=button,lastText='optional',bound=false}
+    end
     if descriptor.fixedMode and not descriptor.modeId then
         local fixed=construct('/Script/UMG.TextBlock',tree)
         fixed:SetJustification(1);fixed:SetVisibility(3)
@@ -243,8 +266,9 @@ function M.decorate(row,descriptor,log,host)
     local instance={
         stateWidget=stateWidget,descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
         baseLabel=row.label or descriptor.settingId,initialized=false,lastName=nil,lastBackingName=nil,wasSelecting=false,
-        pair=nil,
+        pair=nil,optional=optional,
     }
+    if optional then assert(clicks,'click delivery unavailable'):attach(instance,optional.button,'pendingOptionalClicks') end
     M.save(instance)
     return instance
 end
@@ -346,6 +370,16 @@ function M.adopt(row,descriptor,modeRow,clicks)
             instance.savedState={}
             for _,key in ipairs(stateKeys) do instance.savedState[key]=instance[key] end
             for edge=1,4 do instance.keyEdges[edge]=Discovery.contentOf(Discovery.childAt(overlay,edge)) end
+            if descriptor.optional then
+                local box=Discovery.childAt(overlay,7)
+                local optionalOverlay=Discovery.contentOf(box)
+                local optionalText=Discovery.childAt(optionalOverlay,0)
+                local optionalButton=Discovery.childAt(optionalOverlay,1)
+                assert(valid(box) and valid(optionalText) and valid(optionalButton),'optional key controls unavailable')
+                instance.optional={box=box,overlay=optionalOverlay,text=optionalText,button=optionalButton,
+                    lastText=Discovery.textOf(optionalText)}
+                clicks:attach(instance,optionalButton,'pendingOptionalClicks',true)
+            end
             if instance.pairIndex then
                 assert(modeRow,'paired row unavailable')
                 local pairBox=Discovery.childAt(row.surface,assert(tonumber(instance.pairIndex)))
@@ -397,6 +431,9 @@ local function submit(instance,name,keyValue)
     -- remains responsible for pending/dirty/Apply. Never write its config.
     instance.row.slider:SetValue(normalized)
     syncSelector(instance,name)
+    local opacity=keyValue==0 and 0.45 or 1
+    if valid(instance.keyText) then instance.keyText:SetRenderOpacity(opacity) end
+    instance.keyTextOpacity=opacity
 end
 
 function M.tick(instance,log)
@@ -465,6 +502,31 @@ function M.tick(instance,log)
     -- Presentation follows the current backing value, including unsupported codes.
     -- Keep its successful-write cache separate from accepted input state.
     instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
+    if instance.optional then
+        local clear=instance.pendingOptionalClicks or 0
+        instance.pendingOptionalClicks=0
+        if clear>0 and backingValue~=0 then
+            submit(instance,'None',0)
+            backingValue,backingName=0,'None'
+            instance.keyDisplayText='Unbound'
+        end
+        local bound=backingValue~=0
+        local optionalText=bound and 'optional [x]' or 'optional'
+        if optionalText~=instance.optional.lastText then
+            assert(setText(instance.optional.text,optionalText),'optional key text write failed')
+            instance.optional.lastText=optionalText
+        end
+        if bound~=instance.optional.bound then
+            instance.optional.button:SetIsEnabled(bound)
+            instance.optional.text:SetRenderOpacity(bound and 0.85 or 0.45)
+            instance.optional.bound=bound
+        end
+    end
+    local keyTextOpacity=backingValue==0 and 0.45 or 1
+    if keyTextOpacity~=instance.keyTextOpacity then
+        instance.keyText:SetRenderOpacity(keyTextOpacity)
+        instance.keyTextOpacity=keyTextOpacity
+    end
     if instance.keyEnabled==false then
         if not instance.initialized or backingName~=instance.lastBackingName then syncSelector(instance,backingName) end
         instance.initialized=true

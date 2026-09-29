@@ -18,6 +18,12 @@ local i={};local b=button(1,'owned')
 assert(router:open('hostA'));router:attach(i,b);i.pair={button=b};b.hovered=true
 emit();router:deliver(i);assert(i.pendingClicks==1)
 print('PASS one pointer press produces exactly one paired-picker change request')
+local clear=button(3,'clear');clear.hovered=true;b.hovered=false
+ i.optional={button=clear}
+router:attach(i,clear,'pendingOptionalClicks');emit();router:deliver(i)
+assert(i.pendingOptionalClicks==1 and i.pendingClicks==1)
+print('PASS a distinct optional-key click is routed to its clear request')
+i.pendingOptionalClicks=0;clear.hovered=false;b.hovered=true
 i.pendingClicks=0
 for n=1,3 do emit() end
 router:deliver(i)

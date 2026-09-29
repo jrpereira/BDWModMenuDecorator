@@ -10,7 +10,7 @@ local function heading(id, name, level, indent)
 end
 
 function M.arrange(providers)
-    local corePages, modules, remaining = {}, {}, {}
+    local corePages, templateModules, otherModules, remaining = {}, {}, {}, {}
     local first, seen = nil, {}
     for _, provider in ipairs(providers) do
         local id = provider.id
@@ -18,10 +18,15 @@ function M.arrange(providers)
             assert(not seen[id], 'duplicate browser provider: ' .. tostring(id))
             seen[id] = true
             local foundation = id == 'ModCoreControls' or id == 'ModCoreSettings'
-            local module = id == 'ModCoreTemplates.module.Fangdango' or id == 'Preymonition'
+            local templateModule = type(id)=='string'
+                and id:match('^ModCoreTemplates%.module%.') ~= nil
+            local module = templateModule or provider.mcBrowserGroup == 'module'
             if foundation or module then
                 first = first or #remaining + 1
-                if foundation then corePages[id] = provider else modules[id] = provider end
+                if foundation then corePages[id] = provider
+                elseif templateModule then
+                    templateModules[#templateModules + 1] = provider
+                else otherModules[#otherModules + 1] = provider end
             else
                 remaining[#remaining + 1] = provider
             end
@@ -38,9 +43,8 @@ function M.arrange(providers)
             end
         end
     end
-    for _, id in ipairs({'ModCoreTemplates.module.Fangdango', 'Preymonition'}) do
-        local provider = modules[id]
-        if provider then
+    for _, modules in ipairs({templateModules, otherModules}) do
+        for _, provider in ipairs(modules) do
             provider.mcBrowserLevel, provider.mcBrowserIndent = 4, 20
             group[#group + 1] = provider
         end

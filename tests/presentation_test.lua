@@ -45,12 +45,16 @@ mcLevel=1
 [Setting.Key]
 Id=Key
 mcType=keybind
+mcOptional=1
 [Setting.KeyMode]
 Id=KeyMode
 mcType=tab
 Pair=Key
 ]]
 M.parse(schema,items)
+assert(items[5].mcKeybind and items[5].mcOptional,'optional key metadata was not parsed')
+assert(not pcall(M.parse,schema:gsub('mcOptional=1','mcOptional=2'),items))
+assert(not pcall(M.parse,schema:gsub('mcType=keybind','mcType=tab',1),items))
 assert(items[1].mcTabs and items[1].mcFont==2 and items[1].mcTabsWidth==440)
 assert(items[2].mcLabelRule.values[0]=='Slot 5')
 assert(items[2].mcGroup.parent==items[3].mcGroup.parent,'Shared parent labels must share one descriptor')
@@ -234,18 +238,18 @@ assert(categoryLabel.text=='Menu Controls' and categoryLabel.Font.Size==14 and c
     'Category modules must accept level-four browser styling')
 assert(categoryLabel.Slot.Padding.Left==20,
     'Category modules must accept a small browser indentation')
-local ui=controls.build(widget(),{{id='ModCoreTemplates.module.Fangdango',choices=items}},api)
+local ui=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
 ui.mcHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
 assert(#row.mcTabs==2 and row.mcLabel.Font.Size==16)
 items[1].mcNavigation,items[1].mcLinkProvider=true,'ModCoreControls'
-local linked=controls.build(widget(),{{id='ModCoreTemplates.module.Fangdango',choices=items}},api)
+local linked=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
 linked.mcHeaderHost=widget()
 linked:show(1)
 assert(#linked.panels[1].rows[1].mcTabs==1
     and linked.panels[1].rows[1].mcTabs[1].label.text=='Consumables'
-    and linked.panels[1].rows[1].mcTabs[1].widget:GetParent().WidthOverride==160,
+    and linked.panels[1].rows[1].mcTabs[1].widget:GetParent():GetParent().WidthOverride==160,
     'provider links must display one clickable tab')
 local linkSet=linked.model.set
 function linked.model:set(index,value)
@@ -258,6 +262,13 @@ assert(linked.model.linkActivated,'the single link tab must activate even at its
 items[1].mcNavigation,items[1].mcLinkProvider=nil,nil
 assert(row.mcTabs[1].label.Slot.HorizontalAlignment==0 and row.mcTabs[1].label.Slot.VerticalAlignment==2,
     'Tab labels must fill their allocated button slots for centered text justification')
+for _,tab in ipairs(row.mcTabs) do
+    assert(#tab.outline==4 and tab.outline[1].BrushColor.R==0.55
+        and tab.outline[1].BrushColor.A==0.55 and tab.outline[1].visible==3,
+        'Every picker option must have a light one-pixel outline')
+end
+assert(#linked.panels[1].rows[1].mcTabs[1].outline==4,
+    'Provider-link picker options must retain the same outline')
 assert(row.mcTabs[1].selected and not row.mcTabs[2].selected)
 local keyRow,modeRow=ui.panels[1].rows[5],ui.panels[1].rows[6]
 assert(modeRow.mcPairHost and modeRow.mcPairHostBox.visible==1 and keyRow.mcPairOwner==6,
@@ -268,9 +279,9 @@ assert(#modeRow.mcTabs==2 and modeRow.mcTabs[1].toggleValues[1]==0
     and modeRow.mcTabs[1].toggleValues[2]==3 and modeRow.mcTabs[1].label.text=='Tap'
     and modeRow.mcTabs[2].selected,
     'Tap and Hold must share one control while Default remains separate')
-assert(modeRow.mcTabs[1].background:GetParent().WidthOverride==75,
+assert(modeRow.mcTabs[1].background:GetParent():GetParent().WidthOverride==75,
     'The shared Tap/Hold control must occupy half of the paired mode column')
-local toggleBox=modeRow.mcTabs[1].background:GetParent()
+local toggleBox=modeRow.mcTabs[1].background:GetParent():GetParent()
 local toggleContainer=toggleBox:GetParent()
 assert(toggleBox.HeightOverride==modeRow.mcPairHostBox.HeightOverride
     and toggleContainer.RenderTranslation.X==-75
@@ -392,8 +403,8 @@ twoMode.model.pending[6],twoMode.model.committed[6]=0,0
 twoMode:show(1)
 local toggle=twoMode.panels[1].rows[6].mcTabs
 assert(#toggle==1 and not twoMode.panels[1].rows[6].mcDefaultBackground
-    and toggle[1].label.text=='Tap' and toggle[1].background:GetParent().WidthOverride==75
-    and toggle[1].background:GetParent():GetParent().RenderTranslation.X==-75,
+    and toggle[1].label.text=='Tap' and toggle[1].background:GetParent():GetParent().WidthOverride==75
+    and toggle[1].background:GetParent():GetParent():GetParent().RenderTranslation.X==-75,
     'A paired mode without Default must render one full-width Tap/Hold control')
 toggle[1].widget.clicked=true
 twoMode:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)

@@ -1,5 +1,15 @@
 # Changelog
 
+- Give every tab-style picker option a light one-pixel outline so adjacent choices remain visibly aligned.
+- Rename the installed mod folder to `_ModCore_1_Settings`.
+
+## Unreleased
+
+- Dim unbound key labels and add `mcOptional=1` key rows with a click-to-clear
+  `optional [x]` control.
+- Expand key capture to the standard virtual-key keyboard, keypad, punctuation,
+  browser, media, and mouse-button set while keeping Escape reserved for cancellation.
+
 ## v0.3.1
 
 - Refine preset dirty-state handling, grouped presentation, and missing-default initialization.
