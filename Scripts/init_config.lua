@@ -14,7 +14,11 @@ function M.fs.read(path)
     end
     local text,why=f:read(LIMIT+1)
     local closed,closeError=f:close()
-    assert(text and closed,why or closeError or 'read failed')
+    assert(closed,closeError or 'close failed')
+    if not text then
+        assert(not why,why)
+        text=''
+    end
     assert(#text<=LIMIT,'config exceeds 1 MiB')
     return text
 end
@@ -392,7 +396,8 @@ function M.install(choices,fs)
             return open(provider)
         end
         local ok,err=pcall(function()
-            local manifest=assert(fs.read(provider.path),'configuration metadata unavailable')
+            -- Contributed pages carry their manifest in memory; there is no file at provider.path.
+            local manifest=assert(provider.mcManifest or fs.read(provider.path),'configuration metadata unavailable')
             planning=true
             local planned,plan=pcall(M.plan,provider,manifest,choices,fs,provider.choices)
             planning=false

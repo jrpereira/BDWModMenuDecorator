@@ -71,7 +71,7 @@ end
 -- The collapsed child is the row's persistent state. No Lua row registry owns it.
 local markerPrefix='KEM_ROW_1\n'
 local stateKeys={'initialized','lastName','lastBackingName','wasSelecting','captureName',
-    'keyHovered','readWarning','pairIndex','pairHovered','pairLastText'}
+    'keyHovered','readWarning','pointerLatch','pairIndex','pairHovered','pairLastText'}
 local function encode(value)
     if value==nil then return '-' end
     if type(value)=='boolean' then return value and 't' or 'f' end
@@ -110,6 +110,19 @@ function M.save(instance)
     instance.savedState=saved
 end
 
+local function mouseHeld(instance)
+    local tree=instance.row and instance.row.tree
+    if not valid(tree) then return nil end
+    local ok,held=pcall(function()
+        local host=tree:GetOuter()
+        local pc=host and host:GetOwningPlayer()
+        if not valid(pc) then return nil end
+        return pc:IsInputKeyDown({KeyName=FName('LeftMouseButton')})==true
+    end)
+    if ok then return held end
+    return nil
+end
+
 local function stripDirtySuffix(text)
     return (text or ''):gsub('^%*%s+',''):gsub('%s+%*%s*$','')
 end
@@ -118,6 +131,9 @@ local function displayName(name)
     local aliases={None='Unbound',SpaceBar='Space',BackSpace='Backspace',ThumbMouseButton='Mouse 4',ThumbMouseButton2='Mouse 5',LeftMouseButton='LMB',RightMouseButton='RMB',MiddleMouseButton='MMB',
         LeftShift='Left Shift',RightShift='Right Shift',LeftControl='Left Ctrl',RightControl='Right Ctrl',
         LeftAlt='Left Alt',RightAlt='Right Alt',LeftCommand='Left Win',RightCommand='Right Win'}
+    for digit,word in ipairs({'Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine'}) do
+        aliases[word]=tostring(digit-1)
+    end
     return aliases[name] or name or ''
 end
 
@@ -230,15 +246,27 @@ function M.decorate(row,descriptor,log,host,clicks)
     local optional
     if descriptor.optional then
         local box=construct('/Script/UMG.SizeBox',tree)
-        box:SetWidthOverride(76);box:SetHeightOverride(32)
-        box:SetRenderTranslation({X=-80,Y=0})
+        box:SetWidthOverride(40);box:SetHeightOverride(32)
+        box:SetRenderTranslation({X=-48,Y=0})
         local overlay=construct('/Script/UMG.Overlay',tree)
         need(box:SetContent(overlay),'optional key content')
+        -- Match the mode control's Border -> TextBlock composition.
+        local frame=construct('/Script/UMG.Border',tree)
+        frame:SetBrushColor({R=0,G=0,B=0,A=0})
+        frame:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
+        local frameSlot=need(overlay:AddChildToOverlay(frame),'optional clear frame')
+        frameSlot:SetHorizontalAlignment(0);frameSlot:SetVerticalAlignment(0)
+        local inner=construct('/Script/UMG.Border',tree)
+        inner:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.18})
+        local innerSlot=need(frame:SetContent(inner),'optional clear background')
+        innerSlot:SetHorizontalAlignment(0);innerSlot:SetVerticalAlignment(0)
         local text=construct('/Script/UMG.TextBlock',tree)
-        text:SetJustification(0);text:SetRenderOpacity(0.45)
+        text:SetJustification(1);text:SetRenderOpacity(1)
         pcall(function() text:SetFont(row.valueWidget.Font) end)
-        assert(setText(text,'optional'),'optional key text unavailable')
-        local textSlot=need(overlay:AddChildToOverlay(text),'optional key text slot')
+        pcall(function() text:SetColorAndOpacity({SpecifiedColor={R=1,G=0.24,B=0.18,A=1},ColorUseRule=0}) end)
+        pcall(function() text:SetRenderTransformPivot({X=0.5,Y=0.5}); text:SetRenderScale({X=0.88,Y=0.88}) end)
+        assert(setText(text,'X'),'optional key text unavailable')
+        local textSlot=need(inner:SetContent(text),'optional key text slot')
         textSlot:SetHorizontalAlignment(0);textSlot:SetVerticalAlignment(2)
         local button=construct('/Script/UMG.Button',tree)
         button.IsFocusable=false;button:SetIsEnabled(false)
@@ -248,25 +276,27 @@ function M.decorate(row,descriptor,log,host,clicks)
         buttonSlot:SetHorizontalAlignment(0);buttonSlot:SetVerticalAlignment(0)
         local slot=need(keyOverlay:AddChildToOverlay(box),'optional key slot')
         slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(2)
-        optional={box=box,overlay=overlay,text=text,button=button,lastText='optional',bound=false}
+        optional={box=box,overlay=overlay,text=text,button=button,
+            lastText='X',bound=nil}
     end
+    local fixedBox,fixedText
     if descriptor.fixedMode and not descriptor.modeId then
-        local fixed=construct('/Script/UMG.TextBlock',tree)
-        fixed:SetJustification(1);fixed:SetVisibility(3)
-        fixed:SetRenderOpacity(0.45)
-        pcall(function() fixed:SetFont(row.valueWidget.Font) end)
-        assert(setText(fixed,descriptor.fixedMode),'fixed mode text unavailable')
-        local box=construct('/Script/UMG.SizeBox',tree)
-        box:SetWidthOverride(150);box:SetHeightOverride(32)
-        need(box:SetContent(fixed),'fixed mode content')
-        box:SetRenderTranslation({X=104,Y=0})
-        local slot=need(keyOverlay:AddChildToOverlay(box),'fixed mode slot')
+        fixedText=construct('/Script/UMG.TextBlock',tree)
+        fixedText:SetJustification(1);fixedText:SetVisibility(3)
+        fixedText:SetRenderOpacity(0.45)
+        pcall(function() fixedText:SetFont(row.valueWidget.Font) end)
+        assert(setText(fixedText,descriptor.fixedMode),'fixed mode text unavailable')
+        fixedBox=construct('/Script/UMG.SizeBox',tree)
+        fixedBox:SetWidthOverride(150);fixedBox:SetHeightOverride(32)
+        need(fixedBox:SetContent(fixedText),'fixed mode content')
+        fixedBox:SetRenderTranslation({X=104,Y=0})
+        local slot=need(keyOverlay:AddChildToOverlay(fixedBox),'fixed mode slot')
         slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(2)
     end
     local instance={
         stateWidget=stateWidget,descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
         baseLabel=row.label or descriptor.settingId,initialized=false,lastName=nil,lastBackingName=nil,wasSelecting=false,
-        pair=nil,optional=optional,
+        pair=nil,optional=optional,fixedBox=fixedBox,fixedText=fixedText,
     }
     if optional then assert(clicks,'click delivery unavailable'):attach(instance,optional.button,'pendingOptionalClicks') end
     M.save(instance)
@@ -296,7 +326,7 @@ function M.mergePair(instance,modeRow,log,clicks)
     fs:SetHorizontalAlignment(0); fs:SetVerticalAlignment(0)
 
     local pairInner=construct('/Script/UMG.Border',tree)
-    pairInner:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.10})
+    pairInner:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.18})
     local innerSlot=need(pairFrame:SetContent(pairInner),'pair inner content')
     innerSlot:SetHorizontalAlignment(0); innerSlot:SetVerticalAlignment(0)
 
@@ -373,7 +403,7 @@ function M.adopt(row,descriptor,modeRow,clicks)
             if descriptor.optional then
                 local box=Discovery.childAt(overlay,7)
                 local optionalOverlay=Discovery.contentOf(box)
-                local optionalText=Discovery.childAt(optionalOverlay,0)
+                local optionalText=Discovery.contentOf(Discovery.contentOf(Discovery.childAt(optionalOverlay,0)))
                 local optionalButton=Discovery.childAt(optionalOverlay,1)
                 assert(valid(box) and valid(optionalText) and valid(optionalButton),'optional key controls unavailable')
                 instance.optional={box=box,overlay=optionalOverlay,text=optionalText,button=optionalButton,
@@ -465,8 +495,6 @@ function M.tick(instance,log)
         local enabled=d.modeValues[position]~=d.disabledMode
         if instance.keyEnabled~=enabled then
             instance.keyEnabled=enabled
-            instance.selector:SetIsEnabled(enabled)
-            if valid(instance.keyBox) then instance.keyBox:SetRenderOpacity(enabled and 1 or 0.45) end
             if not enabled then
                 instance.wasSelecting=false;instance.captureName=nil;instance.keyHovered=false
             end
@@ -474,9 +502,45 @@ function M.tick(instance,log)
         end
     end
 
+    local grouped=false
+    if d.groupToggleRow and valid(d.groupToggleRow.slider) then
+        local value=tonumber(d.groupToggleRow.slider:GetValue()) or 0
+        grouped=math.floor(value*(d.groupToggleRow.dmmSetting.maximum or 254)+0.5)~=0
+    end
+    local editable=(instance.keyEnabled~=false) and not grouped
+    if instance.grouped~=grouped or instance.keyEditable~=editable then
+        instance.grouped,instance.keyEditable=grouped,editable
+        instance.selector:SetIsEnabled(editable)
+        if instance.keyBox and instance.keyBox.SetRenderOpacity then
+            instance.keyBox:SetRenderOpacity(grouped and 0.30 or (editable and 1 or 0.45))
+        end
+        for _,edge in ipairs(instance.keyEdges or {}) do
+            if edge and edge.SetRenderOpacity then edge:SetRenderOpacity(grouped and 0 or 1) end
+        end
+        if instance.pair and instance.pair.box and instance.pair.box.SetVisibility then
+            instance.pair.box:SetVisibility(grouped and 1 or 0)
+        end
+        if grouped then
+            assert(setText(instance.keyText,d.groupedLabel or instance.baseLabel),'grouped slot text unavailable')
+        else
+            instance.lastBackingName=nil
+            -- The static alias label replaced the normal rendered key text.
+            -- Force one normal presentation write when the group is removed.
+            instance.renderedKeyText=nil
+        end
+        instance.wasSelecting=false;instance.captureName=nil;instance.keyHovered=false
+    end
+
     -- Pointer feedback belongs to the key hit target, not the whole stock row.
     -- Capture styling wins until capture ends, even if the pointer moves away.
     local keyHovered=instance.selector:IsHovered()==true
+    if instance.pointerLatch and instance.selector:GetIsSelectingKey()~=true then
+        local held=mouseHeld(instance)
+        if held==false then
+            instance.pointerLatch=false
+            instance.selector:SetIsEnabled(instance.keyEditable~=false)
+        end
+    end
     if keyHovered~=instance.keyHovered then
         instance.keyHovered=keyHovered
         if not instance.wasSelecting then styleNormal(instance) end
@@ -486,11 +550,12 @@ function M.tick(instance,log)
     -- Keep the stock row highlight and key-capture styling independently owned.
     local pair=instance.pair
     if pair and valid(pair.button) and valid(pair.inner) then
-        local hovered=instance.modeEditable~=false and pair.button:IsHovered()==true
+        local hovered=instance.modeEditable~=false and (not instance.optional or instance.optional.bound~=false)
+            and pair.button:IsHovered()==true
         if hovered~=pair.hovered then
             pair.inner:SetBrushColor(hovered
                 and {R=0.95,G=0.63,B=0.08,A=0.22}
-                or {R=0.12,G=0.12,B=0.12,A=0.10})
+                or {R=0.12,G=0.12,B=0.12,A=0.18})
             pair.hovered=hovered
         end
     end
@@ -501,33 +566,28 @@ function M.tick(instance,log)
     local backingName=Codes.toName(backingValue)
     -- Presentation follows the current backing value, including unsupported codes.
     -- Keep its successful-write cache separate from accepted input state.
-    instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
+    -- A grouped slot is a semantic alias, not an editable physical key.  Its
+    -- label is deliberately stable even when DMM refreshes the backing slider.
+    if not instance.grouped then
+        instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
+    end
     if instance.optional then
         local clear=instance.pendingOptionalClicks or 0
         instance.pendingOptionalClicks=0
         if clear>0 and backingValue~=0 then
+            instance.pointerLatch=true
             submit(instance,'None',0)
             backingValue,backingName=0,'None'
             instance.keyDisplayText='Unbound'
         end
-        local bound=backingValue~=0
-        local optionalText=bound and 'optional [x]' or 'optional'
-        if optionalText~=instance.optional.lastText then
-            assert(setText(instance.optional.text,optionalText),'optional key text write failed')
-            instance.optional.lastText=optionalText
-        end
-        if bound~=instance.optional.bound then
-            instance.optional.button:SetIsEnabled(bound)
-            instance.optional.text:SetRenderOpacity(bound and 0.85 or 0.45)
-            instance.optional.bound=bound
-        end
+        if backingValue==0 then instance.pendingClicks=0 end
     end
     local keyTextOpacity=backingValue==0 and 0.45 or 1
     if keyTextOpacity~=instance.keyTextOpacity then
         instance.keyText:SetRenderOpacity(keyTextOpacity)
         instance.keyTextOpacity=keyTextOpacity
     end
-    if instance.keyEnabled==false then
+    if instance.keyEditable==false then
         if not instance.initialized or backingName~=instance.lastBackingName then syncSelector(instance,backingName) end
         instance.initialized=true
         return true
@@ -557,6 +617,7 @@ function M.tick(instance,log)
 
     local ended=instance.wasSelecting
     if ended then
+        instance.pointerLatch=true
         instance.wasSelecting=false; styleNormal(instance)
         if name=='Escape' or name==instance.captureName then
             -- EscapeKeys cancels natively without changing SelectedKey. No slider,
@@ -618,9 +679,63 @@ function M.tick(instance,log)
     M.save(instance)
     if not result then return result end
     updateModePresentation(instance)
-    if instance and instance.keyDisplayText and instance.keyDisplayText~=instance.renderedKeyText then
+    if instance.optional then
+        -- Read after capture/clear so all controls change together in this tick.
+        local d=instance.descriptor
+        local value=math.floor(d.minimum+instance.row.slider:GetValue()*(d.maximum-d.minimum)+0.5)
+        local bound=value~=0
+        local inherited=d.defaultControl~=nil
+        local inheritedName=d.defaultName
+        local emptyKey=inheritedName and inheritedName~='None'
+            and '('..displayName(inheritedName)..')' or '(none)'
+        local emptyMode=inherited and 'Default' or 'Optional'
+        local optional=instance.optional
+        if optional.lastText~='X' then
+            assert(setText(optional.text,'X'),'optional key text write failed')
+            optional.lastText='X'
+        end
+        optional.button:SetIsEnabled(bound)
+        optional.box:SetVisibility(bound and 0 or 1)
+        optional.box:SetRenderOpacity(1)
+        optional.text:SetRenderOpacity(1)
+        optional.bound=bound
+        if instance.pair then
+            instance.pair.box:SetVisibility(0)
+            instance.pair.box:SetRenderOpacity(1)
+            instance.pair.text:SetRenderOpacity(bound and instance.modeEditable~=false and 1 or 0.45)
+            instance.pair.button:SetIsEnabled(bound and instance.modeEditable~=false)
+            if not bound and instance.pair.lastText~=emptyMode then
+                assert(setText(instance.pair.text,emptyMode),'optional mode text write failed')
+                instance.pair.lastText=emptyMode
+            end
+            if not bound and instance.pair.hovered then
+                instance.pair.inner:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.18})
+                instance.pair.hovered=false
+            end
+            if not bound then instance.pendingClicks=0 end
+        end
+        if instance.fixedBox then
+            instance.fixedBox:SetVisibility(0)
+            instance.fixedBox:SetRenderOpacity(1)
+            if not bound and valid(instance.fixedText) then
+                assert(setText(instance.fixedText,emptyMode),'optional fixed mode text write failed')
+            end
+        end
+        if not bound and not instance.wasSelecting then instance.keyDisplayText=emptyKey end
+        local opacity=bound and 1 or 0.45
+        instance.keyText:SetRenderOpacity(opacity)
+        instance.keyTextOpacity=opacity
+        if instance.keyBox and instance.keyBox.SetRenderOpacity then
+            instance.keyBox:SetRenderOpacity(bound and 1 or 0.65)
+        end
+    end
+    if instance and not instance.grouped and instance.keyDisplayText and instance.keyDisplayText~=instance.renderedKeyText then
         assert(setText(instance.keyText,instance.keyDisplayText),'key text write failed')
         instance.renderedKeyText=instance.keyDisplayText
+    end
+    if instance and instance.pointerLatch and instance.keyEditable~=false
+        and instance.selector:GetIsSelectingKey()~=true then
+        instance.selector:SetIsEnabled(false)
     end
     M.save(instance)
     return result

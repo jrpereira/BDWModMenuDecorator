@@ -10,8 +10,6 @@ local PATCH_MARKER='-- AMM_DMM_LIFECYCLE_PATCH=1'
 local BACKUP_SUFFIX='.amm-1.0.7.bak'
 local NEW_SUFFIX='.amm-new'
 local MAX_FILE=262144
-local WAIT_MS=100
-local WAIT_ATTEMPTS=25
 
 local EVENT_PAYLOAD=[=[-- Synchronous, startup-installed callbacks for extensions that need DMM-owned
 -- lifecycle boundaries. A failed extension callback is logged and isolated.
@@ -205,7 +203,7 @@ local function runtime()
         directories=IterateGameDirectories,read=read,write=write,remove=os.remove,rename=os.rename,
         get=function(key) return ModRef and ModRef:GetSharedVariable(key) end,
         set=function(key,value) assert(ModRef,'ModRef unavailable');ModRef:SetSharedVariable(key,value) end,
-        schedule=ExecuteWithDelay,
+        defer=ExecuteInGameThread,
     }
 end
 
@@ -432,26 +430,24 @@ function M.run(log,initialize,overrides)
         if not patched then log('DMM_PATCH_FAILED',patchError);return false end
         log('DMM_PATCHED','DawnwalkerModMenu '..(env.name or '1.0.7')..' lifecycle API installed')
     end
-    if ready() then return true end
-    if finished then return false end
-    if type(env.schedule)~='function' then
+    if type(env.defer)~='function' then
         log(changed and 'DMM_RESTART_REQUIRED' or 'DMM_HANDSHAKE_FAILED','restart the game to load the DMM lifecycle API')
         return false
     end
-    local attempts=0
-    local function wait()
+    -- Match MCT's startup barrier: the game-thread callback runs after the
+    -- synchronous mod entry points have had a chance to load extensions.
+    local scheduled,why=pcall(env.defer,function()
         if finished or ready() then return end
-        attempts=attempts+1
-        if attempts>=WAIT_ATTEMPTS then
+        if not finished then
             finished=true
-            log(changed and 'DMM_RESTART_REQUIRED' or 'DMM_HANDSHAKE_FAILED','restart the game to load the DMM lifecycle API')
-            return
+            log(changed and 'DMM_RESTART_REQUIRED' or 'DMM_HANDSHAKE_FAILED',
+                'restart the game to load the DMM lifecycle API')
         end
-        local scheduled,why=pcall(env.schedule,WAIT_MS,wait)
-        if not scheduled then finished=true;log('DMM_HANDSHAKE_FAILED',tostring(why)) end
+    end)
+    if not scheduled or why==false then
+        log('DMM_HANDSHAKE_FAILED',tostring(scheduled and 'game-thread dispatch rejected' or why))
+        return false
     end
-    local scheduled,why=pcall(env.schedule,WAIT_MS,wait)
-    if not scheduled then log('DMM_HANDSHAKE_FAILED',tostring(why));return false end
     return 'waiting'
 end
 

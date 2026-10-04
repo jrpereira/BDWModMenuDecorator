@@ -3,21 +3,23 @@ local Groups=require('browser_groups')
 
 local providers={
     {id='Other',name='Other'},
+    {id='ModCoreTemplates.module.Unmarked',name='Unmarked'},
     {id='ModCoreControls',name='Controls'},
-    {id='ModCoreTemplates.module.VisualExample',name='Visual Example'},
+    {id='MCT.module.VisualExample',name='Visual Example',mcBrowserGroup='module'},
     {id='ModCoreSettings',name='Visuals'},
     {id='ExampleOverlay',name='Example Overlay',mcBrowserGroup='module'},
     {id='Last',name='Last'},
 }
 Groups.arrange(providers)
-local expected={'Other','ModCore.browser.root','ModCoreControls','ModCoreSettings',
-    'ModCoreTemplates.module.VisualExample','ExampleOverlay','Last'}
+local expected={'Other','ModCoreTemplates.module.Unmarked','ModCore.browser.root','ModCoreControls','ModCoreSettings',
+    'MCT.module.VisualExample','ExampleOverlay','Last'}
 for index,id in ipairs(expected) do assert(providers[index].id==id) end
 assert(#providers==#expected)
-assert(providers[2].name=='ModCore' and providers[2].noSettings)
-assert(providers[3].mcBrowserLevel==4 and providers[3].mcBrowserIndent==20)
+assert(providers[3].name=='ModCore' and providers[3].noSettings)
+assert(providers[2].mcBrowserLevel==nil,'only declared module pages are grouped')
 assert(providers[4].mcBrowserLevel==4 and providers[4].mcBrowserIndent==20)
-assert(providers[5].mcBrowserLevel==4 and providers[6].mcBrowserIndent==20)
+assert(providers[5].mcBrowserLevel==4 and providers[5].mcBrowserIndent==20)
+assert(providers[6].mcBrowserLevel==4 and providers[7].mcBrowserIndent==20)
 Groups.arrange(providers)
 assert(#providers==#expected)
 for index,id in ipairs(expected) do assert(providers[index].id==id) end
@@ -53,24 +55,4 @@ local filtered=filteredPages.build({},{{id='ModCoreControls',name='Controls'}},n
 assert(#filtered.rows==2 and filtered.rows[1].providerIndex==1
     and filtered.rows[2].providerIndex==2)
 
-local MctExtension=dofile('../ModCoreTemplates/Scripts/mc/dmm_extension.lua')
-local Choices=dofile(assert(os.getenv('DMM_CHOICES_PATH')))
-local pageManifest='[Mod]\nId=ModCoreTemplates.module.VisualExample\nName=Visual Example\n'
-    ..'[Setting.Template]\nId=Template\nType=picker\nPresetValues=0|1\nPresetLabels=None|Wheels\nDefault=0\n'
-local menu={aggregate={manifest='[Mod]\nId=ModCoreTemplates\nName=ModCore Templates\n'},
-    pages={{id='ModCoreTemplates.module.VisualExample',name='Visual Example',module='VisualExample',manifest=pageManifest}}}
-local api={choices=Choices,pages={build=function(_,items) return items end}}
-Groups.install(api.pages)
-MctExtension.new('/tmp/mct-browser-group-test',menu).install(api)
-local combined=api.pages.build({},{{id='ModCoreTemplates',name='ModCore Templates',testOnly=false},
-    {id='ModCoreControls',name='Controls',testOnly=false},
-    {id='ModCoreSettings',name='Visuals',testOnly=false},
-    {id='ExampleOverlay',name='Example Overlay',mcBrowserGroup='module',testOnly=false}},nil,{})
-local combinedIds={'ModCore.browser.root','ModCoreControls','ModCoreSettings',
-    'ModCoreTemplates.module.VisualExample','ExampleOverlay'}
-assert(#combined==#combinedIds)
-for index,id in ipairs(combinedIds) do
-    assert(combined[index].id==id,
-        'browser item ' .. index .. ': ' .. combined[index].id .. ' ~= ' .. id)
-end
 print('PASS ModCore browser groups Controls, Visuals and module pages')

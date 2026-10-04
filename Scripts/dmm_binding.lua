@@ -3,6 +3,7 @@ local KeySelector=require('key_selector')
 local Lifecycle=require('dmm_lifecycle')
 local ClickDelivery=require('click_delivery')
 local DirtyLabels=require('dirty_labels')
+local StandardControls=require('standard_controls')
 local M={}
 local UPDATE_MS=50
 
@@ -29,10 +30,12 @@ function M.install(log)
             end
         end
         add(instance,{'selector','keyBox','keyFrame','keyInner','keyText','stateWidget','modeNav'})
-        if instance.optional then add(instance.optional,{'button','text'}) end
+        if instance.groupToggleRow then add(instance.groupToggleRow,{'slider'}) end
+        if instance.optional then add(instance.optional,{'box','button','text'}) end
+        if instance.fixedBox then add(instance,{'fixedBox'}) end
         add(instance.row,{'slider','wrapper','labelWidget','valueWidget','modeState'})
         if instance.pair then
-            add(instance.pair,{'button','inner','nav','valueWidget','text'})
+            add(instance.pair,{'box','button','inner','nav','valueWidget','text'})
             if instance.pair.row then add(instance.pair.row,{'wrapper'}) end
         end
         for i in ipairs(instance.keyEdges or {}) do add(instance.keyEdges,{i}) end
@@ -57,7 +60,11 @@ function M.install(log)
             local modeValues=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.values
             local descriptor=metadata and metadata.mcKeybind and metadata.kind=='slider' and {
                 providerId=providerId,settingId=metadata.id,minimum=metadata.minimum,maximum=metadata.maximum,
+                default=metadata.default,
                 optional=metadata.mcOptional,
+                defaultControl=metadata.mcDefaultControl,
+                defaultName=metadata.mcDefaultControl and StandardControls.resolve(metadata.mcDefaultControl) or nil,
+                groupedLabel=metadata.label,groupToggleRow=metadata.mcGroupedBy and byId[metadata.mcGroupedBy],
                 fixedMode=metadata.mcFixedMode,modeId=modeRow and metadata.mcPairId or nil,
                 modeOptions=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.labels or nil,
                 modeValues=modeValues,disabledMode=modeValues and (modeValues[2]==-2 and -2 or modeValues[3]==-1 and -1) or nil,

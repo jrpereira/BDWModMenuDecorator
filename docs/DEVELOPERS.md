@@ -8,6 +8,7 @@
 - [Logging and integration checks](#logging-and-integration-checks)
 - [Known limitation: Delete](#known-limitation-delete)
 - [Menu scope and row ownership](#menu-scope-and-row-ownership)
+- [Menu pages](#menu-pages)
 - [Apply notifications](#apply-notifications)
 - [Presentation metadata](#presentation-metadata)
 - [Migrating missing defaults](#migrating-missing-defaults)
@@ -165,13 +166,12 @@ silently substituted.
 
 ## Pairing a mode picker
 
-Add a tab picker that declares the key setting through `Pair`:
+Add a picker that declares the key setting through `Pair`:
 
 ```ini
 [Setting.InteractMode]
 Id = InteractMode
 Type = picker
-mcType = tab
 Pair = Interact
 Label = Interact
 Group = Controls
@@ -190,7 +190,7 @@ normal full-width row. Pairing is ID-based and does not depend on row order.
 The first two declared modes share one control: its label shows the selected mode,
 and each click switches to the other declared value. An optional third `-1`
 Default mode remains a separate control; clicking the shared control from Default
-selects the first mode. Standalone tab pickers keep one button per value.
+selects the first mode. `Pair` renders this mode control without `mcType=tab`.
 
 A picker without explicit decoration remains a stock control. No mode row is
 required for a standalone keybind. Use matching ordered `PresetValues` and
@@ -262,9 +262,12 @@ longest mode labels in the real UI. Automated mocks cannot validate those native
 ## Optional key bindings
 
 Set `mcOptional=1` on an `mcType=keybind` integer setting when zero represents a
-valid unbound choice. An unbound row shows a dim `optional` marker and dimmed
-`Unbound` text. A bound row shows `optional [x]`; clicking it writes zero to the
-stock DMM slider, so Apply, Reset, dirty state, and persistence remain owned by DMM.
+valid default choice. Without `mcDefaultControl`, zero renders `(none)` with an
+`Optional` marker. Set `mcDefaultControl=IA_ActionId` to resolve zero from that
+standard game control; it renders the inherited key in parentheses with a
+`Default` marker. A custom nonzero key shows the red `X` and its mode; clicking
+the `X` writes zero to the stock DMM slider, so Apply, Reset, dirty state, and
+persistence remain owned by DMM.
 
 
 ## Menu scope and row ownership
@@ -285,6 +288,109 @@ has no marker and receives a new decoration. No persistent host/row decorated
 registry or partial-child repair scan exists.
 
 Lua bindings and primitive traversal routes are temporary, discarded on scope changes. They support active input updates and never determine whether a row has been decorated. Capture/presentation state is compared with the last successfully saved scalars in the temporary binding; unchanged state is neither serialized nor written. Persistent state remains on the row. Pending click delivery is transient and cleared on scope changes. Construction failures roll back mutations; repeated update failures stop that control until the next page event rather than dismantling its decoration. Attached widgets leave the page with their row; final UObject reclamation follows Unreal garbage collection.
+
+## Menu pages
+
+ModCoreSettings is the only DMM integration. Other mods never install a DMM
+extension or call DMM directly; to add generated menu pages they publish data
+through `Scripts/menu_contributions.lua`. Vendor that file unchanged and publish
+from the ordinary mod state:
+
+```lua
+local Menu=require('menu_contributions')
+local pages=Menu.publisher(ModRef,{id='ExampleMod',directory='<absolute writable folder>'})
+pages:publish({pages={
+    {id='ExampleMod',name='Example',attach='ExampleMod'},
+    {id='ExampleMod.speed',name='Speed',under='ExampleMod',
+        manifest=settingsManifest,configDirectory='<absolute folder for ConfigFile>'},
+}})
+-- pages:withdraw() removes them; Menu.validate(id,{pages=...}) checks offline.
+```
+
+Page fields: `id` (the contributor id or `<id>.*`; it is the `providerId` in Apply
+notifications), `name`, optional `author`, `version`, `description`, `visible`,
+`manifest` with `configDirectory`, and at most one of `under` (an earlier page of
+the same contributor) or `attach` (a mod folder name). `group='module'` puts the
+page in the ModCore browser group.
+
+Placement on every menu build:
+
+- `under`: after the parent and its earlier children, indented.
+- `attach`: matched case-insensitively against a mod's name, id or detected
+  folder. A detected placeholder without settings is hidden while the page is
+  shown. Otherwise the page follows that mod, indented, unless it is a module
+  group page. A name matching several mods rejects the contributor. A page with
+  `visible=false` still hides its detected placeholder.
+- Otherwise: sorted by name with other mods, so a page that returns does not move.
+
+Contributed pages need no `mod_settings.ini` on disk; ModCoreSettings keeps
+their manifest in memory and only uses `configDirectory` to resolve `ConfigFile`.
+
+Publishing writes a new generation of files and then switches the contributor's
+shared variable; the menu keeps showing the previous generation until then.
+`publish` rejects structurally invalid pages. Settings manifests are parsed when
+the menu builds; any failure (manifest, id collision, ambiguous `attach`) skips
+that contributor's pages and is logged once. The rest of the menu is unaffected.
+
+### Slot rows
+
+A page can reserve a place for another mod's settings. Mark a read-only row as
+the slot:
+
+```ini
+[Setting.MCC_Visuals_Pending]
+Id=MCC_Visuals_Pending
+Type=picker
+Label=Quickslot templates
+Group=Visuals
+PresetValues=0|1
+PresetLabels=Coming soon|Coming soon
+mcReadOnly=1
+mcSlot=visuals
+```
+
+Slot names are letters, digits and `_`, at most 64 characters, unique per page.
+The page needs explicit `Id`s on every setting. Contributors address a slot as
+`<provider id>:<slot>`; a `ModCore<Name>` provider may also be written as its
+lowercase `<name>`, so `controls:visuals` and `ModCoreControls:visuals` are the
+same slot. A contributor publishes settings from one of its own manifest pages
+(which may be `visible=false`):
+
+```lua
+pages:publish({pages={...},rows={
+    {page='ModCoreTemplates',slot='controls:visuals',settings={'MCT_Template','MCT_RingSize'}},
+}})
+```
+
+When the page loads, the listed settings replace the slot row in place, in
+contributor and list order. Each takes the slot's `Group`, so the group's
+Category rule gates it. A row carries its own `VisibleWhen`/`VisibleValues`
+only when they name a row the same contributor inserted earlier in that slot.
+DMM ANDs that rule with the Category rule. A row without its own rule takes the
+slot row's rule; a slot row with its own `VisibleWhen` rejects rows that bring
+one. Source Category rules are not carried. Only core DMM fields are copied, so
+inserted rows render as plain pickers, toggles or sliders. Presets, navigation,
+read-only and link rows cannot be inserted. With no valid rows the slot row
+shows unchanged. A failed row is skipped and logged on its own.
+
+The page's model sees only its own settings: its configuration, initialization
+and Apply event never include inserted rows. Inserted rows edit the source
+page's model. The page's Apply commits its own settings first, then each
+dirtied source, which publishes its Apply event under the source page id. A
+source fails only its own commit; the host's event is still published. Restore,
+Reset and the unapplied-changes guard cover both. A source whose model cannot
+open leaves its rows inert. As on any page, unapplied changes are discarded
+when the page closes, so the same setting on two pages never holds two pending
+values.
+
+Rows need descriptor contract 2, so a ModCoreSettings build that predates
+slots skips the whole contribution, pages included.
+
+### Page links
+
+A navigation picker with `mcLinkPage=<page id>` opens that page instead of saving
+a value. It requires `mcNavigation=1` and works in any manifest. With unapplied
+changes the link is refused and the page shows a status message.
 
 ## Apply notifications
 
@@ -308,34 +414,35 @@ callback.
 
 ## Presentation metadata
 
-`mcType=tab` renders an ordinary picker as right-aligned choices on the
-same row as its label. It supports two to eight choices and retains DMM's
-keyboard/controller navigation, pending model and Apply/Restore behavior.
+`mcType=tab` renders an ordinary picker as contour-free, right-aligned choices
+with a 24-pixel right inset on the same row as its label. It supports two to eight
+choices and retains DMM's keyboard/controller navigation, pending model and
+Apply/Restore behavior.
 
 Set `mcNavigation=1` on a picker to use its choices only for menu navigation.
 The picker can drive ordinary `VisibleWhen` / `VisibleValues` rules, but has no
 config key, never marks the menu dirty, and is omitted from Apply events. Its
-selected view lasts while the menu model is open. Only one navigation picker
-is supported per provider; pair it with `mcType=tab` for horizontal choices.
+selected view lasts while the menu model is open. Navigation pickers use DMM's
+arrow selector unless they explicitly request another presentation.
 
 Set `mcTabsWidth` to an integer from 160 through 440 to reserve that total
 width in pixels for the horizontal choices. The default grows by option count
 up to 384 pixels. A two-option `mcTabsWidth=440` picker is twice the default
 220-pixel width while retaining 144 pixels for its label.
 
-`mcLevel=0` inherits the existing font. Levels 1–6 use sizes
-22, 16, 15, 14, 12 and 11 respectively. Level1 uses the title color;
-Level2/3 use the heading color; Level4 uses normal body text; Level5/6 use
+`mcLevel=0` inherits the existing font. Levels 2–6 use sizes
+16, 15, 14, 12 and 11 respectively. Level2/3 use the heading color;
+Level4 uses normal body text; Level5/6 use
 muted text, with Level5 at 85% opacity. The property applies to setting labels
 and Category headings without changing control types.
 
-On generated ModCoreTemplates module pages, a setting at typography level 1
+Set `mcHeading=true` on a setting to use the title style. On generated
+ModCoreTemplates module pages, that setting
 shares the mod page title row above the divider. Its setting label is hidden
 while the original control retains its value and navigation. Dirty styling is
-omitted from this title row. The Templates page keeps its level-one settings in
-the normal settings list with the normal row font and indentation. This supports
-toggles, pickers and sliders; at most one setting per provider may use level 1.
-No separate header flag is required.
+omitted from this title row. The Templates page keeps its heading settings in
+the normal settings list with title styling. This supports
+toggles, pickers and sliders; at most one setting per provider may be a heading.
 Mods still implement their settings' behavior.
 
 Categories can declare `mcHelp` to show Level5 explanatory text under
@@ -351,8 +458,8 @@ mcHeading=0
 The category remains a normal DMM group: its rows retain their manifest order,
 visibility rules, navigation and Apply/Restore behavior. Any shared `mcParent`
 heading remains visible while the category has visible rows. `mcHelp` is not
-rendered when its category heading is suppressed. `mcHeading` accepts only
-`0` or `1` and defaults to `1`.
+rendered when its category heading is suppressed. `mcHeading` accepts
+`false`/`true` or `0`/`1` and defaults to `true` on categories.
 
 Categories can also share a parent heading without flattening that heading into
 each category label:

@@ -54,7 +54,7 @@ local function environment(seed,options)
     end
     env.get=function(key) return shared[key] end
     env.set=function(key,value) shared[key]=value end
-    env.schedule=function(_,callback) scheduled[#scheduled+1]=callback end
+    env.defer=function(callback) scheduled[#scheduled+1]=callback end
     return env,files,shared,scheduled
 end
 
@@ -114,6 +114,7 @@ do
         assert(files['C:/DMM/Scripts/'..name..test.backupSuffix]==value)
     end
     assert(files['C:/DMM/Scripts/extension_events.lua']==test.payload)
+    assert(#scheduled==1,'bootstrap must queue one startup callback')
     drain(scheduled)
     assert(events[#events]=='DMM_RESTART_REQUIRED')
     assert(shared[test.claimKey]==nil)
@@ -189,12 +190,15 @@ do
         seed['C:/DMM/Scripts/'..name..test.backupSuffix]=value
     end
     seed['C:/DMM/Scripts/extension_events.lua']=test.payload
-    local env,_,shared=environment(seed)
+    local env,_,shared,scheduled=environment(seed)
     shared[test.readyKey]='1'
     local initialized=0
-    assert(Bootstrap.run(function() end,function() initialized=initialized+1;return true end,env)==true)
+    assert(Bootstrap.run(function() end,function() initialized=initialized+1;return true end,env)=='waiting')
+    assert(initialized==0 and #scheduled==1,'initialization must wait for the startup barrier')
+    drain(scheduled)
     assert(initialized==1 and shared[test.claimKey]~=nil)
-    assert(Bootstrap.run(function() end,function() initialized=initialized+1;return true end,env)==false)
+    assert(Bootstrap.run(function() end,function() initialized=initialized+1;return true end,env)=='waiting')
+    drain(scheduled)
     assert(initialized==1)
 end
 
@@ -209,7 +213,7 @@ do
     local initialized=0
     assert(Bootstrap.run(function() end,function() initialized=initialized+1;return true end,env)=='waiting')
     shared[test.readyKey]='1';drain(scheduled)
-    assert(initialized==1)
+    assert(initialized==1 and #scheduled==0,'readiness must initialize once without a retry timer')
 end
 
 print('PASS DMM bootstrap handles compatibility, transaction rollback, handshake and duplicate initialization')

@@ -41,19 +41,22 @@ mcParentLevel=2
 mcLevel=3
 [Setting.Enabled]
 Id=Enabled
-mcLevel=1
+mcHeading=true
 [Setting.Key]
 Id=Key
 mcType=keybind
 mcOptional=1
+mcDefaultControl=IA_Combat_ToggleQuickslots
 [Setting.KeyMode]
 Id=KeyMode
-mcType=tab
 Pair=Key
 ]]
 M.parse(schema,items)
-assert(items[5].mcKeybind and items[5].mcOptional,'optional key metadata was not parsed')
+assert(items[5].mcKeybind and items[5].mcOptional
+    and items[5].mcDefaultControl=='IA_Combat_ToggleQuickslots',
+    'optional key metadata was not parsed')
 assert(not pcall(M.parse,schema:gsub('mcOptional=1','mcOptional=2'),items))
+assert(not pcall(M.parse,schema:gsub('mcOptional=1','mcOptional=0'),items))
 assert(not pcall(M.parse,schema:gsub('mcType=keybind','mcType=tab',1),items))
 assert(items[1].mcTabs and items[1].mcFont==2 and items[1].mcTabsWidth==440)
 assert(items[2].mcLabelRule.values[0]=='Slot 5')
@@ -69,10 +72,10 @@ assert(not items[1].mcTabs and items[1].mcFont==nil,'old amm metadata must not b
 assert(not pcall(M.parse,schema:gsub('mcType=tab','mcType=tabs'),items))
 assert(not pcall(M.parse,schema:gsub('mcTabsWidth=440','mcTabsWidth=441'),items))
 assert(not pcall(M.parse,schema:gsub('mcType=tab','mcType=keybind'),items))
-assert(not pcall(M.parse,schema:gsub('mcLevel=1','mcLevel=9'),items))
+assert(not pcall(M.parse,schema:gsub('mcHeading=true','mcHeading=invalid'),items))
 M.parse(schema,items)
 assert(not pcall(M.parse,schema:gsub('mcLevel=2','mcLevel=9'),items))
-assert(not pcall(M.parse,schema:gsub('mcHeading=0','mcHeading=true'),items))
+assert(not pcall(M.parse,schema:gsub('mcHeading=0','mcHeading=invalid'),items))
 assert(not pcall(M.parse,schema:gsub('mcLabelWhen=Primary','mcLabelWhen=Missing'),items))
 local parentItems={{id='One',kind='toggle',group='One',values={0,1}},{id='Two',kind='toggle',group='Two',values={0,1}}}
 assert(not pcall(M.parse,'[Category.One]\nmcParent=\n',parentItems))
@@ -80,7 +83,9 @@ assert(not pcall(M.parse,'[Category.One]\nmcParentLevel=2\n',parentItems))
 assert(not pcall(M.parse,'[Category.One]\nmcParent=Shared\nmcParentLevel=2\n[Category.Two]\nmcParent=Shared\nmcParentLevel=3\n',parentItems))
 M.parse(schema,items)
 local function widget()
-    local w={children={},Font={SkewAmount=0},enabled=true,position=0,visible=0}
+    local w={children={},Font={SkewAmount=0},enabled=true,position=0,visible=0,
+        WidgetStyle={NormalPadding={Left=16,Top=0,Right=0,Bottom=0},
+            PressedPadding={Left=16,Top=0,Right=0,Bottom=0}}}
     function w:GetFullName() return 'Widget '..tostring(self) end
     function w:IsValid() return true end
     function w:GetParent() return self.parent end
@@ -136,6 +141,10 @@ local choices={parse=function() return items end,format=function(setting,value)
     end
     return tostring(value)
 end}
+function choices.snap(setting,value)
+    local steps=math.floor((value-setting.minimum)/setting.step+0.5)
+    return math.max(setting.minimum,math.min(setting.maximum,setting.minimum+steps*setting.step))
+end
 local pages={build=function(tree,providers,status,a)
     local filterButton,filterLabel=a.button(tree,'Compatible Mods')
     local browserList=widget()
@@ -206,7 +215,11 @@ local controls={build=function(tree,providers,a)
     function ui:show(i) self.active=i;self:prepare(i);self:refresh() end
     function ui:refresh()
         local visible=self.model:visibility()
-        for i,row in ipairs(self.panels[self.active].rows) do row.visible=visible[i] end
+        for i,row in ipairs(self.panels[self.active].rows) do
+            row.visible=visible[i]
+            row.pressed,row.pointer=false,false
+            for _,part in ipairs(row.parts or {}) do part.pressed,part.pointer=false,false end
+        end
     end
     function ui:tick() self.ticks=(self.ticks or 0)+1;return false end
     function ui:clearPresses() end
@@ -249,14 +262,14 @@ ui.mcHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
 assert(#row.mcTabs==2 and row.mcLabel.Font.Size==20)
-items[1].mcNavigation,items[1].mcLinkProvider=true,'ModCoreControls'
+items[1].mcNavigation,items[1].mcLinkPage=true,'ModCoreControls'
 local linked=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
 linked.mcHeaderHost=widget()
 linked:show(1)
 assert(#linked.panels[1].rows[1].mcTabs==1
     and linked.panels[1].rows[1].mcTabs[1].label.text=='Consumables'
-    and linked.panels[1].rows[1].mcTabs[1].widget:GetParent():GetParent().WidthOverride==160,
-    'provider links must display one clickable tab')
+    and linked.panels[1].rows[1].mcTabs[1].widget:GetParent().WidthOverride==160,
+    'page links must display one clickable tab')
 local linkSet=linked.model.set
 function linked.model:set(index,value)
     if index==1 and value==0 then self.linkActivated=true end
@@ -265,16 +278,19 @@ end
 linked.panels[1].rows[1].mcTabs[1].widget.clicked=true
 linked:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(linked.model.linkActivated,'the single link tab must activate even at its default value')
-items[1].mcNavigation,items[1].mcLinkProvider=nil,nil
+items[1].mcNavigation,items[1].mcLinkPage=nil,nil
 assert(row.mcTabs[1].label.Slot.HorizontalAlignment==0 and row.mcTabs[1].label.Slot.VerticalAlignment==2,
     'Tab labels must fill their allocated button slots for centered text justification')
 for _,tab in ipairs(row.mcTabs) do
-    assert(#tab.outline==4 and tab.outline[1].BrushColor.R==0.55
-        and tab.outline[1].BrushColor.A==0.55 and tab.outline[1].visible==3,
-        'Every picker option must have a light one-pixel outline')
+    assert(not tab.outline and tab.widget:GetParent():GetParent():GetParent()==row.wrapper:GetContent(),
+        'Tab picker options must have no contour container')
 end
-assert(#linked.panels[1].rows[1].mcTabs[1].outline==4,
-    'Provider-link picker options must retain the same outline')
+local tabSlot=row.mcTabs[1].widget:GetParent():GetParent().Slot
+assert(tabSlot.HorizontalAlignment==3 and tabSlot.Padding.Right==24,
+    'Tab pickers must align right with a 24-pixel inset')
+local linkTab=linked.panels[1].rows[1].mcTabs[1]
+assert(not linkTab.outline and linkTab.widget:GetParent():GetParent().Slot.Padding.Right==24,
+    'Provider-link pickers must use the same contour-free inset')
 assert(row.mcTabs[1].selected and not row.mcTabs[2].selected)
 local keyRow,modeRow=ui.panels[1].rows[5],ui.panels[1].rows[6]
 assert(modeRow.mcPairHost and modeRow.mcPairHostBox.visible==1 and keyRow.mcPairOwner==6,
@@ -285,9 +301,21 @@ assert(#modeRow.mcTabs==2 and modeRow.mcTabs[1].toggleValues[1]==0
     and modeRow.mcTabs[1].toggleValues[2]==3 and modeRow.mcTabs[1].label.text=='Tap'
     and modeRow.mcTabs[2].selected,
     'Tap and Hold must share one control while Default remains separate')
-assert(modeRow.mcTabs[1].background:GetParent():GetParent().WidthOverride==75,
+assert(modeRow.mcTabs[1].background:GetParent().WidthOverride==75,
     'The shared Tap/Hold control must occupy half of the paired mode column')
-local toggleBox=modeRow.mcTabs[1].background:GetParent():GetParent()
+ui.model.pending[5]=0;ui:refresh()
+assert(modeRow.mcModeTabs.visible==1 and modeRow.mcModeDefaultTabs.visible==1
+    and modeRow.mcOptionalModeHidden and not modeRow.mcTabs[1].enabled,
+    'An unbound optional key must collapse the visible picker controls')
+local priorMode=ui.model.pending[6]
+modeRow.mcTabs[1].widget.clicked=true
+ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(ui.model.pending[6]==priorMode,'A collapsed mode control must not change the setting')
+ui.model.pending[5]=49;ui:refresh()
+assert(modeRow.mcModeTabs.visible==0 and modeRow.mcModeDefaultTabs.visible==0
+    and modeRow.mcTabs[1].enabled,
+    'Binding the key must restore the visible mode controls')
+local toggleBox=modeRow.mcTabs[1].background:GetParent()
 local toggleContainer=toggleBox:GetParent()
 assert(toggleBox.HeightOverride==modeRow.mcPairHostBox.HeightOverride
     and toggleContainer.RenderTranslation.X==-75
@@ -332,7 +360,7 @@ row.mcTabs[2].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(ui.model.pending[1]==1 and row.mcTabs[2].selected)
 assert(modeRow.mcPairHostBox.visible==0 and keyRow.wrapper.visible==1
-    and modeRow.widget:GetParent().WidthOverride==330,
+    and modeRow.widget:GetParent().WidthOverride==306,
     'A visible paired key must render inside the mode row while its original row remains collapsed')
 assert(modeRow.mcTabs[2].selected,
     'The mode owner must preserve the negative Default value')
@@ -409,8 +437,8 @@ twoMode.model.pending[6],twoMode.model.committed[6]=0,0
 twoMode:show(1)
 local toggle=twoMode.panels[1].rows[6].mcTabs
 assert(#toggle==1 and not twoMode.panels[1].rows[6].mcDefaultBackground
-    and toggle[1].label.text=='Tap' and toggle[1].background:GetParent():GetParent().WidthOverride==75
-    and toggle[1].background:GetParent():GetParent():GetParent().RenderTranslation.X==-75,
+    and toggle[1].label.text=='Tap' and toggle[1].background:GetParent().WidthOverride==75
+    and toggle[1].background:GetParent():GetParent().RenderTranslation.X==-75,
     'A paired mode without Default must render one full-width Tap/Hold control')
 toggle[1].widget.clicked=true
 twoMode:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
@@ -418,7 +446,7 @@ assert(twoMode.model.pending[6]==3 and toggle[1].label.text=='Hold',
     'The two-value pair must toggle to its declared Hold value')
 items[1].group='Player';items[1].label='Quickslots'
 local pickerHeaderSchema=schema:gsub('Id=Primary\nmcType=tab\nmcLevel=2',
-    'Id=Primary\nmcType=tab\nmcLevel=1'):gsub('Id=Enabled\nmcLevel=1',
+    'Id=Primary\nmcType=tab\nmcHeading=true'):gsub('Id=Enabled\nmcHeading=true',
     'Id=Enabled\nmcLevel=2')
 M.parse(pickerHeaderSchema,items)
 local templatePage=controls.build(widget(),{{id='ModCoreTemplates',choices=items}},api)
@@ -428,9 +456,9 @@ templatePage:show(1)
 assert(not templatePage.panels[1].rows[1].mcHeader
     and templatePage.panels[1].rows[1].wrapper:GetParent()==templatePage.panels[1].scroll
     and templatePage.panels[1].rows[1].mcLabel.visible~=1
-    and templatePage.panels[1].rows[1].mcLabel.Font.Size==20
+    and templatePage.panels[1].rows[1].mcLabel.Font.Size==22
     and templatePage.panels[1].rows[1].mcLabel.Slot.Padding.Left==0,
-    'Template page must keep its level-two picker in an unindented row')
+    'Template page must keep its level-one picker in an unindented row')
 local pickerHeader=controls.build(widget(),{{id='ModCoreControls',choices=items}},api)
 pickerHeader.mcHeaderHost=page.controls.mcHeaderHost
 pickerHeader.mcHeaderTitle=page.modTitle
@@ -457,7 +485,6 @@ assert(recycled:window(1) and recycledLabel.Font.Size==16 and recycledLabel.Slot
     and recycled.mounted[1].wrapper.Slot.Padding.Left==0
     and recycled.mounted[1].wrapper.WidthOverride==584,
     'Recycling must also clear the previous provider indentation')
-print('PASS nested headings, tab clicks, selected state, font levels, dynamic labels/order, page reuse and closed-menu inactivity')
 items[1].values,items[1].labels,items[1].default={0},{'Slot 1'},0
 M.parse('[Setting.Primary]\nId=Primary\nmcReadOnly=1\nmcReferenceLabel=Slot 1\nmcType=tab\n',items)
 local readOnly=controls.build(widget(),{{choices=items}},api)
@@ -469,3 +496,78 @@ referenceTabs[1].widget.clicked=true
 local before=readOnly.model.pending[1]
 readOnly:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(readOnly.model.pending[1]==before, 'Reference clicks cannot change the pending value')
+
+for i=#items,1,-1 do items[i]=nil end
+for i,group in ipairs({'Before','AlsoBefore','After'}) do
+    items[i]={id='Entry'..i,kind=i==1 and 'picker' or 'toggle',group=group,label='Entry '..i,
+        values={0,1},labels={'Off','On'}}
+end
+M.parse('[Category.Before]\nmcHeading=0\n[Category.AlsoBefore]\nmcHeading=0\n',items)
+local initial=controls.build(widget(),{{choices=items}},api)
+initial:show(1)
+for i=1,2 do
+    local row=initial.panels[1].rows[i]
+    assert(row.mcLabel.Font.Size==16 and row.mcLabel.color=='muted'
+        and row.widget:GetContent().Slot.Padding.Left==0
+        and row.widget.WidgetStyle.NormalPadding.Left==0
+        and row.widget.WidgetStyle.PressedPadding.Left==0
+        and row.wrapper.Slot.Padding.Top==12 and row.wrapper.Slot.Padding.Bottom==4,
+        'Rows before the first visible category must match its label style and spacing')
+end
+local after=initial.panels[1].rows[3]
+assert(after.mcLabel.Font.Size==14 and after.mcLabel.color=='body'
+    and after.widget:GetContent().Slot.Padding.Left==36
+    and after.widget.WidgetStyle.NormalPadding.Left==0
+    and after.wrapper.Slot.Padding.Top==0 and after.wrapper.Slot.Padding.Bottom==0,
+    'Rows after the first category must keep the stock child style')
+items[2].mcGroup.heading=true
+initial:refresh()
+local second=initial.panels[1].rows[2]
+assert(second.mcLabel.Font.Size==14 and second.mcLabel.color=='body'
+    and second.widget:GetContent().Slot.Padding.Left==36
+    and second.widget.WidgetStyle.NormalPadding.Left==0
+    and second.wrapper.Slot.Padding.Top==0 and second.wrapper.Slot.Padding.Bottom==0,
+    'Showing an earlier category must restore the normal child style')
+
+-- A redraw between press and release must not turn one physical click into
+-- another new press. The next press in a double click must still be accepted.
+local arrow=initial.panels[1].rows[1].parts[1]
+local sounds=0
+local function pointerStep(pressed,hovered)
+    local wasPressed,origin=arrow.pressed,arrow.pointer
+    if pressed and not wasPressed then origin=hovered end
+    local clicked=wasPressed and not pressed and origin and hovered
+    arrow.pressed,arrow.pointer=pressed,origin
+    if clicked then sounds=sounds+1;initial:refresh() end
+end
+pointerStep(true,true)
+initial:refresh()
+assert(arrow.pressed and arrow.pointer,'refresh must retain an arrow press until release')
+pointerStep(false,true)
+pointerStep(false,true)
+pointerStep(true,true)
+initial:refresh()
+pointerStep(false,true)
+pointerStep(false,true)
+assert(sounds==2,'a double click must produce two changes without replaying either release')
+
+local pointerRow=initial.panels[1].rows[1]
+pointerRow.lastNavigation=0
+pointerRow.nav:SetValue(0.4)
+initial:tick({},function() return false,false,false end,false)
+assert(pointerRow.nav:GetValue()==0,'mouse drag must not move the hidden picker navigation slider')
+pointerRow.nav:SetValue(0.4)
+initial:tick({},function() return false,false,false end,true)
+assert(pointerRow.nav:GetValue()==0.4,'controller navigation must still reach the picker slider')
+
+local nativeSlider=initial.panels[1].rows[3]
+items[3].minimum,items[3].maximum,items[3].step=0,10,2
+nativeSlider.slider=widget();nativeSlider.lastValue=0
+nativeSlider.slider:SetValue(0.04)
+initial:tick({},function() return false,false,false end,false)
+assert(nativeSlider.lastValue==0.04,'raw slider movement within one snapped value must be consumed')
+nativeSlider.slider:SetValue(0.25)
+initial:tick({},function() return false,false,false end,false)
+assert(nativeSlider.lastValue==0.04,'a slider move to another snapped value must reach DMM')
+
+print('PASS nested headings, category style before first heading, tabs, font levels, ordering and reuse')

@@ -48,9 +48,14 @@ Default = 75
 ```
 
 The stored value is a Windows virtual-key code. In this example, `75` means K; `0` means unbound.
-Add `mcOptional = 1` when zero is a valid choice. The row then shows `optional`
-to the left of an unbound field and `optional [x]` beside a bound field; clicking
-the latter clears it through DMM's pending setting state.
+Add `mcOptional = 1` when zero is a valid choice. An unbound row shows `(none)`
+with a dimmed `Optional` marker. Binding a key reveals a separate red `X` clear
+control and restores the Tap/Hold control; clearing the key returns to the
+optional placeholder through DMM's pending state.
+Add `mcDefaultControl = IA_ActionId` when zero should inherit a standard game
+control. The inherited key appears in parentheses with `Default`; an optional
+row without that field shows `(none)` with `Optional`. A custom key retains the
+red `X` and its Tap/Hold control.
 
 ## Limits
 

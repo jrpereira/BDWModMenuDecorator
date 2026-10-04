@@ -7,7 +7,9 @@ function M.parse(content,items)
     local byId={}
     for _,item in ipairs(items) do byId[item.id]=item end
     local function finish()
-        if not current or (current.mcNavigation==nil and current.mcReadOnly==nil) then return end
+        if not current or (current.mcNavigation==nil and current.mcReadOnly==nil
+            and current.mcLinkPage==nil) then return end
+        assert(current.mcLinkPage==nil or current.mcNavigation=='1','mcLinkPage requires mcNavigation=1')
         if current.mcReadOnly~=nil then
             assert(current.mcReadOnly=='1','mcReadOnly must be 1')
         else assert(current.mcNavigation=='1','mcNavigation must be 1') end
@@ -24,6 +26,11 @@ function M.parse(content,items)
             item.mcReadOnly=true
         else
             item.mcNavigation=true
+            if current.mcLinkPage then
+                local target=current.mcLinkPage
+                assert(target~='' and #target<=128 and not target:find('%c'),'invalid mcLinkPage')
+                item.mcLinkPage=target
+            end
         end
     end
     for line in (content..'\n'):gmatch('([^\n]*)\n') do

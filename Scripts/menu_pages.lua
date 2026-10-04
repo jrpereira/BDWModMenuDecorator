@@ -1,0 +1,218 @@
+-- Turn published menu contributions into DMM pages before DMM builds its rows.
+-- Contributors never run code here; they publish data through menu_contributions.lua.
+local M={}
+
+local function before(a,b)
+    if a.testOnly~=b.testOnly then return not a.testOnly end
+    local an,bn=a.name:lower(),b.name:lower()
+    if an~=bn then return an<bn end
+    return a.id<b.id
+end
+local function indexOf(providers,provider)
+    for index,candidate in ipairs(providers) do if candidate==provider then return index end end
+end
+local function insertSorted(providers,provider)
+    for index,candidate in ipairs(providers) do
+        if before(provider,candidate) then table.insert(providers,index,provider);return end
+    end
+    providers[#providers+1]=provider
+end
+
+function M.reader(Contributions,shared,read,report)
+    local cache={}
+    local function load(path)
+        local directory=assert(path:match('^(.*)[/\\][^/\\]+$'),'invalid descriptor path')
+        return Contributions.decode(read(path),function(name) return read(directory..'/'..name) end)
+    end
+    return function()
+        local list={}
+        local index=shared:GetSharedVariable(Contributions.index)
+        if type(index)~='string' then return list end
+        for word in index:gmatch('%S+') do
+            local key=Contributions.prefix..word
+            local value=shared:GetSharedVariable(key)
+            local generation,path=Contributions.slot(value)
+            local entry=cache[word]
+            if generation and path~='' and (not entry or entry.generation~=generation) then
+                local ok,result=pcall(load,path)
+                if ok and (result.generation~=generation or Contributions.hex(result.id)~=word) then
+                    ok,result=false,'descriptor does not match its channel'
+                end
+                -- A publish may have started while the files were read. Never mix generations.
+                if shared:GetSharedVariable(key)==value then
+                    if not ok then report('CONTRIBUTION_SKIPPED',word..' generation '..generation..': '..tostring(result)) end
+                    entry={generation=generation,result=ok and result or false}
+                    cache[word]=entry
+                end
+            elseif generation and path=='' then
+                entry=nil;cache[word]=nil
+            end
+            if entry and entry.result then list[#list+1]=entry.result end
+        end
+        return list
+    end
+end
+
+local function generated(contribution,page,parse)
+    local choices={}
+    if page.manifest then choices=parse(page.manifest) end
+    local provider={id=page.id,name=page.name,author=page.author or contribution.id,
+        version=page.version or '',description=page.description or '',
+        authorURL='',modURL='',logoFile='',logoAsset='',testOnly=false,
+        choices=choices,settingsCount=#choices,choicesLoaded=true,deferred=false,
+        path=page.configDirectory and (page.configDirectory:gsub('[/\\]+$','')..'/mod_settings.ini') or nil,
+        mcContribution=contribution.id,mcBrowserGroup=page.group,mcManifest=page.manifest}
+    if #choices==0 then provider.noSettings,provider.mcBrowserHeading=true,page.manifest==nil end
+    return provider
+end
+
+local function attached(providers,folder)
+    local wanted,match=folder:lower(),nil
+    for _,provider in ipairs(providers) do
+        if not provider.mcContribution then
+            local id,name=tostring(provider.id or ''):lower(),tostring(provider.name or ''):lower()
+            if name==wanted or id==wanted or id=='detected:ue4ss:'..wanted then
+                if match then error('attach '..folder..' matches more than one mod') end
+                match=provider
+            end
+        end
+    end
+    return match
+end
+
+-- Rebuild contributed pages in DMM's persistent provider list. state keeps the
+-- placeholder entries hidden by the previous build so they return when unused.
+-- state.inserts is keyed by provider address and slot name; address parses '<provider>:<slot>'
+-- (menu_contributions.address). Without it, rows are ignored.
+function M.apply(providers,contributions,parse,state,report,address)
+    for index=#providers,1,-1 do
+        if providers[index].mcContribution then table.remove(providers,index) end
+    end
+    for _,placeholder in ipairs(state.hidden or {}) do insertSorted(providers,placeholder) end
+    state.hidden={}
+    -- Slot rows by target provider id and slot name, rebuilt with the pages.
+    state.inserts={}
+    local ids={}
+    for _,provider in ipairs(providers) do ids[provider.id]=true end
+    for _,contribution in ipairs(contributions) do
+        local hidden,inserts={},{}
+        local ok,err=pcall(function()
+            local built={}
+            for _,page in ipairs(contribution.pages) do
+                assert(not ids[page.id],'page id '..page.id..' is already in the menu')
+                local parent=page.under and built[page.under]
+                if page.visible~=false and (not page.under or parent) then
+                    built[page.id]={provider=generated(contribution,page,parse),page=page}
+                end
+            end
+            -- Validate all attachments before changing the list; a contributor is all or nothing.
+            -- A hidden page still claims its folder: its detected placeholder stays hidden too.
+            local claimed={}
+            for _,page in ipairs(contribution.pages) do
+                local entry=built[page.id]
+                if entry and page.attach then entry.match=attached(providers,page.attach)
+                elseif page.visible==false and page.attach then
+                    local match=attached(providers,page.attach)
+                    if match and match.noSettings and match.detectedKind then claimed[#claimed+1]=match end
+                end
+            end
+            for _,match in ipairs(claimed) do
+                table.remove(providers,indexOf(providers,match))
+                hidden[#hidden+1]=match
+            end
+            local tails={}
+            for _,page in ipairs(contribution.pages) do
+                local entry=built[page.id]
+                if entry then
+                    local provider,match=entry.provider,entry.match
+                    if page.under then
+                        local parent=built[page.under]
+                        local tail=tails[page.under] or parent.provider
+                        table.insert(providers,indexOf(providers,tail)+1,provider)
+                        provider.mcBrowserLevel,provider.mcBrowserIndent=4,20
+                        local ancestor=page.under
+                        while ancestor do tails[ancestor]=provider;ancestor=built[ancestor].page.under end
+                    elseif match and match.noSettings and match.detectedKind then
+                        table.remove(providers,indexOf(providers,match))
+                        hidden[#hidden+1]=match
+                        insertSorted(providers,provider)
+                    elseif match and page.group~='module' then
+                        local tail=tails[match] or match
+                        table.insert(providers,indexOf(providers,tail)+1,provider)
+                        provider.mcBrowserLevel,provider.mcBrowserIndent=4,20
+                        tails[match]=provider
+                    else
+                        insertSorted(providers,provider)
+                    end
+                    ids[page.id]=true
+                end
+            end
+            -- A row's source page may be hidden; its model still needs a provider.
+            for _,row in ipairs(address and contribution.rows or {}) do
+                local source
+                for _,page in ipairs(contribution.pages) do
+                    if page.id==row.page then
+                        source=built[page.id] and built[page.id].provider or generated(contribution,page,parse)
+                    end
+                end
+                local target,slot=address(row.slot)
+                inserts[#inserts+1]={target=target,slot=slot,
+                    entry={contributor=contribution.id,source=source,settings=row.settings}}
+            end
+        end)
+        if ok then
+            for _,placeholder in ipairs(hidden) do state.hidden[#state.hidden+1]=placeholder end
+            for _,insert in ipairs(inserts) do
+                local slots=state.inserts[insert.target] or {}
+                state.inserts[insert.target]=slots
+                slots[insert.slot]=slots[insert.slot] or {}
+                table.insert(slots[insert.slot],insert.entry)
+            end
+        else
+            for index=#providers,1,-1 do
+                if providers[index].mcContribution==contribution.id then
+                    ids[providers[index].id]=nil;table.remove(providers,index)
+                end
+            end
+            for _,placeholder in ipairs(hidden) do insertSorted(providers,placeholder) end
+            report('CONTRIBUTION_SKIPPED',contribution.id..': '..tostring(err))
+        end
+    end
+    return providers
+end
+
+-- slots (optional): the menu_slots controller; read loads a disk manifest for splicing.
+function M.install(pages,parse,contributions,report,slots,read)
+    assert(type(pages)=='table' and type(pages.build)=='function','DMM pages API unavailable')
+    if pages.mcMenuPagesVersion then return false end
+    local state,build,reported={}, pages.build, {}
+    local function once(event,detail)
+        if reported[detail] then return end
+        reported[detail]=true
+        report(event,detail)
+    end
+    pages.build=function(tree,providers,status,api)
+        -- Contributions must never take the menu down with them.
+        local ok,list=pcall(contributions)
+        if not ok then once('CONTRIBUTIONS_UNAVAILABLE',tostring(list));list={} end
+        M.apply(providers,list,parse,state,once,slots and slots.address)
+        if slots then
+            slots.inserts,slots.applied=state.inserts,api.applied
+            local loadProvider=api.loadProvider
+            local wrapped={}
+            for key,value in pairs(api) do wrapped[key]=value end
+            -- Splice after DMM loads the page and before its rows are built.
+            wrapped.loadProvider=function(provider)
+                if loadProvider then loadProvider(provider) end
+                local ok,err=pcall(slots.load,slots,provider,read)
+                if not ok then once('SLOT_ROWS_SKIPPED',tostring(provider.id)..': '..tostring(err)) end
+            end
+            api=wrapped
+        end
+        return build(tree,providers,status,api)
+    end
+    pages.mcMenuPagesVersion=1
+    return true
+end
+
+return M

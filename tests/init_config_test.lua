@@ -5,6 +5,10 @@ local function fails(fn,pattern)
     assert(not ok and tostring(err):find(pattern,1,true),tostring(err))
 end
 local choices={index=function(s,value) return type(value)=='number' and value>=0 and value<=255 end}
+local emptyPath=os.tmpname()
+local emptyFile=assert(io.open(emptyPath,'wb'));assert(emptyFile:close())
+assert(Config.fs.read(emptyPath)=='','empty files must be valid configuration metadata')
+assert(os.remove(emptyPath))
 local migrated={{id='Primary',key='Primary',section='General',default=200},{id='Secondary',key='Secondary',section='General',default=200}}
 Config.defaultSources('[Setting.Primary]\nId=Primary\nDefaultFrom=Legacy\n[Setting.Secondary]\nId=Secondary\nDefaultFrom=Legacy',migrated)
 local migrationChoices={index=function(_,value) return type(value)=='number' and value>=50 and value<=1000 end}
@@ -118,7 +122,10 @@ function wrapped.index(setting,value)
     for i,candidate in ipairs(setting.values or {}) do if candidate==value then return i end end
 end
 function wrapped.open(opened)
-    if wrapped.fs then assert(wrapped.fs.read('Mods/Ordinary/config.ini')=='[General]\nEnabled=1\n') end
+    if wrapped.fs then
+        local config=opened.path:gsub('mod_settings%.ini$','config.ini')
+        assert(wrapped.fs.read(config)=='[General]\nEnabled=1\n')
+    end
     return {provider=opened,items=opened.choices or {},error=nil}
 end
 fs,files=memory({['Mods/Ordinary/mod_settings.ini']='[Setting.Enabled]\nId=Enabled\n'})
@@ -129,4 +136,13 @@ assert(files['Mods/Ordinary/config.ini']=='[General]\nEnabled=1\n','ordinary pro
 local writes=fs.writes
 wrapped.open({id='Test',path='missing',choices=ordinarySettings,testOnly=true})
 assert(fs.writes==writes,'test-only provider touched configuration')
+local contributed={id='MCT.page',path='Mods/Contributed/mod_settings.ini',choices=ordinarySettings,
+    mcManifest='[Setting.Enabled]\nId=Enabled\n'}
+wrapped.fs=nil
+assert(files['Mods/Contributed/mod_settings.ini']==nil)
+local opened=wrapped.open(contributed)
+assert(not opened.error,'contributed pages use their in-memory manifest: '..tostring(opened.error))
+assert(files['Mods/Contributed/config.ini']=='[General]\nEnabled=1\n','contributed provider was not initialized')
+assert(wrapped.open({id='NoFile',path='Mods/Missing/mod_settings.ini',choices=ordinarySettings}).error
+    :find('configuration metadata unavailable',1,true),'a missing manifest still fails without mcManifest')
 print('PASS in-state config planning preserves bytes, validates paths and recovers transactions')

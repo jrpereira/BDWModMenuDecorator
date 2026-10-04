@@ -157,22 +157,24 @@ function M.rowsFromScroll(scroll)
                 if valid(marker) and isA(marker,'TextBlock') then
                     local text=textOf(marker) or ''
                     local function decode(value) return (value:gsub('%%(%x%x)',function(hex) return string.char(tonumber(hex,16)) end)) end
-                    if text:sub(1,14)=='KEM_SETTING_4\n' then
+                    if text:sub(1,14)=='KEM_SETTING_5\n' then
                         local fields={}
                         for value in (text..'\n'):gmatch('(.-)\n') do fields[#fields+1]=value end
-                        local count=tonumber(fields[18])
-                        if count and count>=0 and count<=64 and #fields==18+count*2 then
+                        local count=tonumber(fields[19])
+                        if count and count>=0 and count<=64 and #fields==19+count*2 then
                             local setting={id=decode(fields[4]),kind=fields[5],minimum=tonumber(fields[6]),
                                 maximum=tonumber(fields[7]),step=tonumber(fields[8]),decimals=tonumber(fields[9]),
                                 prefix=decode(fields[10]),suffix=decode(fields[11]),mcKeybind=fields[12]=='1',
                                 mcFixedMode=decode(fields[13]),mcPairId=decode(fields[14]),
                                 mcTabsWidth=tonumber(fields[15]),mcPairTargetId=decode(fields[16]),
-                                mcOptional=fields[17]=='1',values={},labels={}}
+                                mcOptional=fields[17]=='1',mcDefaultControl=decode(fields[18]),
+                                values={},labels={}}
                             if setting.mcFixedMode=='' then setting.mcFixedMode=nil end
                             if setting.mcPairId=='' then setting.mcPairId=nil end
                             if setting.mcPairTargetId=='' then setting.mcPairTargetId=nil end
-                            for item=1,count do setting.values[item]=assert(tonumber(decode(fields[18+item])),'invalid setting identity value') end
-                            for item=1,count do setting.labels[item]=decode(fields[18+count+item]) end
+                            if setting.mcDefaultControl=='' then setting.mcDefaultControl=nil end
+                            for item=1,count do setting.values[item]=assert(tonumber(decode(fields[19+item])),'invalid setting identity value') end
+                            for item=1,count do setting.labels[item]=decode(fields[19+count+item]) end
                             row.settingIndex=tonumber(fields[2]);row.identityProviderId=decode(fields[3]);row.settingId=setting.id
                             row.dmmSetting=setting
                         end

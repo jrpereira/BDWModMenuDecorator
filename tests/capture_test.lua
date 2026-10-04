@@ -37,7 +37,10 @@ local function fixture(value,dirty)
     -- Deliberately no GetSelectedKey: match the reflected UE 5.5 API.
     local wrapper=obj();function wrapper:GetParent() return obj() end
     local surface=obj();function surface:SetBrushColor(c) self.color=c end
-    local instance={row={slider=slider,wrapper=wrapper,valueWidget=textWidget(tostring(value)..(dirty and ' *' or '')),labelWidget=textWidget('Ability')},
+    local pc=obj();function pc:IsInputKeyDown() return false end
+    local host=obj();function host:GetOwningPlayer() return pc end
+    local tree=obj();function tree:GetOuter() return host end
+    local instance={row={tree=tree,slider=slider,wrapper=wrapper,valueWidget=textWidget(tostring(value)..(dirty and ' *' or '')),labelWidget=textWidget('Ability')},
         selector=selector,keyBox=textWidget(''),keyText=textWidget(''),keyInner=surface,keyEdges={},baseLabel='Ability',
         descriptor={providerId='Test',settingId='Ability',minimum=0,maximum=254}}
     assert(M.tick(instance,log));assert(slider.writes==0,'initialization changed stock state')
@@ -88,6 +91,14 @@ for _,case in ipairs({
     assert(slider.writes==1 and math.abs(slider.value-case[2]/254)<1e-8 and i.keyText.text==case[3])
 end
 print('PASS left/right modifier keys are captured as distinct virtual-key values')
+for value=0,9 do
+    local names={'Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine'}
+    i,s,slider=fixture(0x30+value,false)
+    assert(i.keyText.text==tostring(value),'saved digit key must display as a digit')
+    capture(i,s,names[value+1])
+    assert(i.keyText.text==tostring(value),'captured digit key must display as a digit')
+end
+print('PASS top-row digit keys display as digits')
 i,s,slider=fixture(82,false);capture(i,s,'K',{ctrl=true})
 assert(slider.writes==0 and i.keyText.text=='R' and events[#events]:find('UNSUPPORTED_KEY_CHORD',1,true))
 print('PASS modifier chords are rejected instead of silently storing their primary key')
@@ -99,14 +110,76 @@ print('PASS zero/unbound initializes without writes and can be rebound')
 
 i,s,slider=fixture(82,false)
 local optionalButton=obj({enabled=false});function optionalButton:SetIsEnabled(v) self.enabled=v end
-local optionalText=textWidget('optional')
-i.descriptor.optional=true;i.optional={button=optionalButton,text=optionalText,lastText='optional',bound=false}
-assert(M.tick(i,log) and optionalText.text=='optional [x]' and optionalButton.enabled and optionalText.opacity==0.85)
+local function visibilityBox()
+    local box=obj();function box:SetVisibility(v) self.visibility=v end
+    function box:SetRenderOpacity(v) self.opacity=v end
+    return box
+end
+local optionalText=textWidget('X')
+local optionalBox=visibilityBox()
+i.descriptor.optional=true;i.optional={box=optionalBox,button=optionalButton,text=optionalText,lastText='X'}
+i.fixedBox=visibilityBox()
+local modeBox=visibilityBox()
+local modeButton=obj({enabled=false});function modeButton:SetIsEnabled(v) self.enabled=v end
+function modeButton:IsHovered() return self.hovered==true end
+i.pair={box=modeBox,button=modeButton,text=textWidget('Tap'),inner=obj({SetBrushColor=function(self,color) self.color=color end})}
+assert(M.tick(i,log) and optionalText.text=='X' and optionalButton.enabled and optionalBox.visibility==0)
+assert(i.keyText.text=='R' and i.fixedBox.visibility==0 and modeBox.visibility==0 and modeButton.enabled)
 i.pendingOptionalClicks=1
-assert(M.tick(i,log) and slider.writes==1 and slider.value==0 and i.keyText.text=='Unbound')
-assert(optionalText.text=='optional' and optionalText.opacity==0.45 and optionalButton.enabled==false)
-assert(i.keyText.opacity==0.45)
-print('PASS optional marker becomes a clear action only while its key is bound')
+assert(M.tick(i,log) and slider.writes==1 and slider.value==0 and i.keyText.text=='(none)')
+assert(optionalBox.visibility==1 and optionalButton.enabled==false and i.fixedBox.visibility==0)
+assert(modeBox.visibility==0 and modeButton.enabled==false and i.pair.text.text=='Optional')
+assert(i.keyText.opacity==0.45 and i.keyBox.opacity==0.65)
+capture(i,s,'Escape')
+assert(slider.writes==1 and i.keyText.text=='(none)' and optionalBox.visibility==1)
+s.selecting=true;assert(M.tick(i,log) and i.keyText.text=='...')
+s.selecting=false;s.SelectedKey=chord('K');assert(M.tick(i,log))
+assert(slider.writes==2 and i.keyText.text=='K' and i.keyText.opacity==1)
+assert(optionalBox.visibility==0 and optionalButton.enabled and i.fixedBox.visibility==0 and i.fixedBox.opacity==1)
+assert(modeBox.visibility==0 and modeBox.opacity==1 and modeButton.enabled and i.pair.text.opacity==1)
+slider.value=0;assert(M.tick(i,log))
+assert(slider.writes==2 and i.keyText.text=='(none)' and optionalBox.visibility==1)
+print('PASS optional placeholder, clear, cancellation, capture and Restore switch presentation together')
+
+i,s,slider=fixture(0,false)
+i.descriptor.optional=true;i.descriptor.defaultControl='IA_Combat_ToggleQuickslots'
+i.descriptor.defaultName='LeftAlt'
+i.optional={box=visibilityBox(),button=optionalButton,text=textWidget('X'),lastText='X'}
+i.pair={box=visibilityBox(),button=modeButton,text=textWidget('Tap'),
+    inner=obj({SetBrushColor=function(self,color) self.color=color end})}
+assert(M.tick(i,log) and i.keyText.text=='(Left Alt)' and i.pair.text.text=='Default')
+assert(i.optional.box.visibility==1 and not optionalButton.enabled
+    and i.pair.box.visibility==0 and not modeButton.enabled)
+print('PASS optional standard-control default is distinct from an empty optional binding')
+
+-- A held click must not be reused when X disappears or a capture completes.
+local mouseDown=true
+local pc=obj()
+function pc:IsInputKeyDown(key) assert(key.KeyName:ToString()=='LeftMouseButton');return mouseDown end
+local host=obj()
+function host:GetOwningPlayer() return pc end
+local tree=obj()
+function tree:GetOuter() return host end
+i,s,slider=fixture(82,false)
+i.row.tree=tree;i.descriptor.optional=true
+local clearButton=obj();function clearButton:SetIsEnabled(v) self.enabled=v end
+i.optional={box=visibilityBox(),button=clearButton,text=textWidget('X'),lastText='X'}
+s.hovered=true;i.pendingOptionalClicks=1
+assert(M.tick(i,log) and i.pointerLatch and s.enabled==false and slider.value==0)
+s.hovered=false
+for _=1,4 do assert(M.tick(i,log) and i.pointerLatch and s.enabled==false) end
+s.hovered=true;assert(M.tick(i,log) and i.pointerLatch and s.enabled==false)
+mouseDown=false
+assert(M.tick(i,log) and not i.pointerLatch and s.enabled==true)
+mouseDown=true;s.hovered=true;s.selecting=true;assert(M.tick(i,log))
+s.selecting=false;s.SelectedKey=chord('K')
+assert(M.tick(i,log) and i.pointerLatch and s.enabled==false and slider.writes==2)
+s.hovered=false
+for _=1,4 do assert(M.tick(i,log) and i.pointerLatch and s.enabled==false and slider.writes==2) end
+s.hovered=true;assert(M.tick(i,log) and i.pointerLatch and s.enabled==false)
+mouseDown=false
+assert(M.tick(i,log) and not i.pointerLatch and s.enabled==true and slider.writes==2)
+print('PASS clear and capture keep the selector blocked through a moving held click')
 i,s,slider=fixture(82,false);capture(i,s,'K')
 for n=1,30 do M.tick(i,log) end
 assert(slider.writes==1 and i.keyText.text=='K' and i.row.labelWidget.text=='Ability')
@@ -134,6 +207,25 @@ capture(i,s,'K');assert(slider.writes==1)
 modeNav.value=1;assert(M.tick(i,log) and s.enabled==true,
     'Hold mode must leave key capture enabled')
 print('PASS Default disables key capture with visible styling; Tap and Hold re-enable it')
+
+i,s,slider=fixture(82,false)
+local groupSlider=obj({value=164/254})
+function groupSlider:GetValue() return self.value end
+local groupedEdge=obj()
+function groupedEdge:SetRenderOpacity(value) self.opacity=value end
+local groupedPairBox=obj()
+function groupedPairBox:SetVisibility(value) self.visibility=value end
+i.keyEdges={groupedEdge}
+i.pair={box=groupedPairBox}
+i.descriptor.groupedLabel='Slot 1'
+i.descriptor.groupToggleRow={slider=groupSlider,dmmSetting={maximum=254}}
+assert(M.tick(i,log) and s.enabled==false and i.keyBox.opacity==0.30
+    and groupedEdge.opacity==0 and groupedPairBox.visibility==1 and i.keyText.text=='Slot 1',
+    'bound group must replace the slot editor with a dim, borderless semantic slot')
+groupSlider.value=0
+assert(M.tick(i,log) and s.enabled==true and i.keyBox.opacity==1 and groupedEdge.opacity==1
+    and i.keyText.text=='R','unbinding the group must restore the slot editor and key display')
+print('PASS grouped slot is a static, borderless semantic alias while its group is bound')
 
 i,s,slider=fixture(82,false)
 local edge=obj();function edge:SetBrushColor(c) self.color=c end

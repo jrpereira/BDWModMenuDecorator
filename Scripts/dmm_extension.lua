@@ -24,6 +24,10 @@ return {
         local browserGroups=module('browser_groups')
         local config=module('init_config')
         local lifecycle=module('dmm_lifecycle')
+        local contributions=module('menu_contributions')
+        local menuPages=module('menu_pages')
+        local pageLinks=module('page_links')
+        local menuSlots=module('menu_slots')
         assert(type(mapped.install)=='function','mapped preset installer unavailable')
         assert(type(presentation.install)=='function','presentation installer unavailable')
         assert(type(config.install)=='function','configuration installer unavailable')
@@ -34,9 +38,23 @@ return {
         presentation.install(dmm.choices,dmm.controls,dmm.pages)
         browserGroups.install(dmm.pages)
         config.install(dmm.choices)
-        local publisher=lifecycle.publisher(function(event,detail)
+        local function report(event,detail)
             print('[ModCoreSettings] '..event..' '..tostring(detail or '')..'\n')
-        end)
+        end
+        -- Outermost open: inner wrappers only ever see the host's own unspliced settings.
+        local slots=menuSlots.install(dmm.choices,report,contributions)
+        assert(ModRef and type(ModRef.GetSharedVariable)=='function','DMM shared variables unavailable')
+        local function read(path)
+            local file=assert(io.open(path,'rb'))
+            local content=file:read('a')
+            file:close()
+            return assert(content,'unreadable '..path)
+        end
+        -- Wrapped after browser groups so contributed pages exist before ModCore grouping runs.
+        menuPages.install(dmm.pages,function(content) return dmm.choices.parse(content) end,
+            menuPages.reader(contributions,ModRef,read,report),report,slots,read)
+        pageLinks.install(dmm.pages)
+        local publisher=lifecycle.publisher(report)
         for _,name in ipairs({'providerPrepared','providerRefreshed','hostClosing'}) do
             dmm.events:on(name,function(context) publisher:publish(name,context) end)
         end

@@ -1,10 +1,21 @@
 # Changelog
 
+- Add menu contributions: other mods publish generated pages as data through the
+  vendorable `menu_contributions.lua` client instead of installing DMM extensions.
+- Add `mcLinkPage` for navigation pickers that open another page; it replaces
+  `mcLinkProvider`.
+- Group module pages in the ModCore browser group only when they declare it.
+- Remove tab-picker contours and inset all tab choices, including provider links,
+  24 pixels from the right edge.
 - Give every tab-style picker option a light one-pixel outline so adjacent choices remain visibly aligned.
 - Rename the installed mod folder to `_ModCore_1_Settings`.
 
 ## Unreleased
 
+- Add slot rows: a page marks a read-only row with `mcSlot=<name>` and other
+  contributors publish their own settings into it (`rows` in
+  `menu_contributions.lua`, descriptor contract 2). Inserted rows stay owned,
+  stored and applied by their source page.
 - Enlarge level-two setting labels, including Control Layout and Control Map,
   and inset submodule browser highlights with their rows.
 - Bind queued picker presses to the preceding hovered control sample and discard
