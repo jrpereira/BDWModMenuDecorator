@@ -18,6 +18,8 @@
   stored and applied by their source page.
 - Add slot links: a contributed page with `link='<provider>:<slot>'` opens that
   slot's page with the slot showing.
+- Show a hidden row-source page as an ordinary page when none of its rows has
+  an available slot.
 - Enlarge level-two setting labels, including Control Layout and Control Map,
   and inset submodule browser highlights with their rows.
 - Bind queued picker presses to the preceding hovered control sample and discard

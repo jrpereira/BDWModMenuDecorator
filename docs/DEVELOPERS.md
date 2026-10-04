@@ -385,6 +385,13 @@ open leaves its rows inert. As on any page, unapplied changes are discarded
 when the page closes, so the same setting on two pages never holds two pending
 values.
 
+A `visible=false` page that is a row source shows as an ordinary page, in its
+declared place (`under`, `attach`), when none of its rows has an available
+slot: the host page is not listed or does not declare the slot. Its rows then
+work as on any page, with the same page id and storage. Build such a page to
+stand alone. Availability is decided per menu build; a row entry rejected
+later, while the page loads, does not bring the fallback back.
+
 A page with `link='<provider>:<slot>'` and no manifest is a browser entry for
 that slot. Selecting it opens the slot's page and sets the navigation pickers
 that gate the slot so its rows show; navigation never marks the page dirty.

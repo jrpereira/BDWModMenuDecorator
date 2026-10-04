@@ -69,6 +69,17 @@ local function generated(contribution,page,parse)
     return provider
 end
 
+-- The page that hosts a slot address, when it is listed and declares the slot.
+local function slotHost(providers,slots,value)
+    if not slots then return nil end
+    local target,slot=slots.address(value)
+    if not target then return nil end
+    for _,candidate in ipairs(providers) do
+        if not candidate.mcLinkSlot and not candidate.noSettings and slots.provider(candidate.id)==target
+            and slots:declares(candidate,slot) then return candidate,target,slot end
+    end
+end
+
 local function attached(providers,folder)
     local wanted,match=folder:lower(),nil
     for _,provider in ipairs(providers) do
@@ -87,6 +98,7 @@ end
 -- placeholder entries hidden by the previous build so they return when unused.
 -- state.inserts is keyed by provider address and slot name. slots (the menu_slots controller)
 -- parses addresses and checks slot declarations; without it rows are ignored and link pages hidden.
+-- A hidden page whose rows have no available slot is shown instead, so its settings stay reachable.
 function M.apply(providers,contributions,parse,state,report,slots)
     local address=slots and slots.address
     for index=#providers,1,-1 do
@@ -101,11 +113,17 @@ function M.apply(providers,contributions,parse,state,report,slots)
     for _,contribution in ipairs(contributions) do
         local hidden,inserts={},{}
         local ok,err=pcall(function()
-            local built={}
+            local built,shown,landed={},{},{}
+            for _,row in ipairs(contribution.rows or {}) do
+                landed[row.page]=landed[row.page] or slotHost(providers,slots,row.slot)~=nil
+            end
+            for _,page in ipairs(contribution.pages) do
+                shown[page.id]=page.visible~=false or landed[page.id]==false
+            end
             for _,page in ipairs(contribution.pages) do
                 assert(not ids[page.id],'page id '..page.id..' is already in the menu')
                 local parent=page.under and built[page.under]
-                if page.visible~=false and (not page.under or parent) then
+                if shown[page.id] and (not page.under or parent) then
                     built[page.id]={provider=generated(contribution,page,parse),page=page}
                 end
             end
@@ -115,7 +133,7 @@ function M.apply(providers,contributions,parse,state,report,slots)
             for _,page in ipairs(contribution.pages) do
                 local entry=built[page.id]
                 if entry and page.attach then entry.match=attached(providers,page.attach)
-                elseif page.visible==false and page.attach then
+                elseif not shown[page.id] and page.attach then
                     local match=attached(providers,page.attach)
                     if match and match.noSettings and match.detectedKind then claimed[#claimed+1]=match end
                 end
@@ -187,14 +205,9 @@ function M.apply(providers,contributions,parse,state,report,slots)
     for index=#providers,1,-1 do
         local link=providers[index].mcLinkSlot
         if link then
-            local target,slot,host
-            if slots then target,slot=slots.address(link.address) end
-            for _,candidate in ipairs(providers) do
-                if target and not candidate.mcLinkSlot and not candidate.noSettings
-                    and slots.provider(candidate.id)==target then host=candidate end
-            end
-            local filled=target and state.inserts[target] and state.inserts[target][slot]
-            if host and filled and #filled>0 and slots:declares(host,slot) then
+            local host,target,slot=slotHost(providers,slots,link.address)
+            local filled=host and state.inserts[target] and state.inserts[target][slot]
+            if filled and #filled>0 then
                 link.host,link.slot=host.id,slot
             else table.remove(providers,index) end
         end

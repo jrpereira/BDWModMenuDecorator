@@ -207,6 +207,39 @@ do
     expect(list2,'ModCoreControls,MCT','without slot support links are hidden')
 end
 
+-- A hidden row-source page stays hidden while any of its rows has a slot; otherwise it
+-- shows as an ordinary page in its declared place.
+do
+    local declared=true
+    local slots={address=Menu.address,provider=Menu.provider,
+        declares=function(_,provider,name) return declared and provider.id=='ModCoreControls' and name=='visuals' end}
+    local function contribution()
+        return {id='ModCoreTemplates',pages={{id='ModCoreTemplates',name='ModCore Templates'},
+            {id='ModCoreTemplates.quickslots',name='Quickslots',under='ModCoreTemplates',visible=false,
+                manifest=manifest,configDirectory='/c'},
+            {id='ModCoreTemplates.secret',name='Secret',visible=false}},
+            rows={{page='ModCoreTemplates.quickslots',slot='controls:visuals',settings={'A'}}}}
+    end
+    local function build(menu,withSlots)
+        local list,state=menu,{}
+        Pages.apply(list,{contribution()},parse,state,report,withSlots~=false and slots or nil)
+        return list,state
+    end
+    local list,state=build({mod('ModCoreControls','Controls')})
+    expect(list,'ModCoreControls,ModCoreTemplates','slot available: source stays hidden')
+    assert(state.inserts.controls.visuals[1].source.id=='ModCoreTemplates.quickslots')
+    list,state=build({mod('Zeta')})
+    expect(list,'ModCoreTemplates,ModCoreTemplates.quickslots,Zeta','no host: fallback page under its parent')
+    assert(list[2].mcBrowserIndent==20 and list[2].mcManifest==manifest)
+    assert(state.inserts.controls.visuals[1].source==list[2],'rows and fallback share one provider')
+    declared=false
+    expect(build({mod('ModCoreControls','Controls')}),'ModCoreControls,ModCoreTemplates,ModCoreTemplates.quickslots',
+        'undeclared slot: fallback')
+    declared=true
+    expect(build({mod('ModCoreControls','Controls')},false),'ModCoreControls,ModCoreTemplates,ModCoreTemplates.quickslots',
+        'no slot support: fallback')
+end
+
 -- The real DMM parser accepts generated manifests through the installed choices chain.
 local choicesPath=os.getenv('DMM_CHOICES_PATH')
 if choicesPath then
