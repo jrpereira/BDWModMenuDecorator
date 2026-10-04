@@ -45,6 +45,11 @@ function M.parse(content,items)
             assert(item.mcReadOnly,'mcSlot requires mcReadOnly=1')
             item.mcSlot=name
         end
+        local label=section.fields.mcSlotLabel
+        if label~=nil then
+            assert(name~=nil,'mcSlotLabel requires mcSlot')
+            assert(label=='1','mcSlotLabel must be 1')
+        end
     end
     return items
 end
@@ -60,8 +65,9 @@ end
 -- Section text for one inserted setting, placed in the slot's group. Its own VisibleWhen may
 -- name a row the same contributor inserted earlier in this slot; otherwise it takes the slot
 -- row's rule. DMM ANDs either with the slot group's Category rule. Source Category rules are
--- not carried: contributors express that gating per row.
-local function insertion(source,id,slot,number,earlier)
+-- not carried: contributors express that gating per row. With mcSlotLabel=1 on the slot
+-- row, the first inserted row takes the slot row's Label and mcLevel: the host names it.
+local function insertion(source,id,slot,number,earlier,first)
     local found
     for _,section in ipairs(sections(source.mcManifest or '')) do
         if section.fields.Id==id then found=section.fields end
@@ -71,10 +77,14 @@ local function insertion(source,id,slot,number,earlier)
     for _,setting in ipairs(source.choices or {}) do if setting.id==id then byId=setting end end
     eligible(byId)
     local out={'[Setting.mcSlot.'..number..']'}
-    for _,key in ipairs(COPIED) do
-        if found[key]~=nil then out[#out+1]=key..'='..found[key] end
-    end
     local fields=slot.fields
+    local named=first and fields.mcSlotLabel=='1'
+    for _,key in ipairs(COPIED) do
+        local value=found[key]
+        if named and key=='Label' then value=fields.Label end
+        if value~=nil then out[#out+1]=key..'='..value end
+    end
+    if named and fields.mcLevel then out[#out+1]='mcLevel='..fields.mcLevel end
     out[#out+1]='Group='..(fields.Group or fields.Section or fields.Category or 'Settings')
     local rule=fields
     if found.VisibleWhen or found.VisibleValues then
@@ -122,7 +132,8 @@ function M.load(provider,inserts,read,parse,report)
                         for _,id in ipairs(entry.settings) do
                             assert(not used[id] and not ids[id],'setting id '..id..' is already on this page')
                             serial=serial+1
-                            for _,row in ipairs(insertion(entry.source,id,section,serial,seen)) do rows[#rows+1]=row end
+                            local first=#generated==0 and #rows==0
+                            for _,row in ipairs(insertion(entry.source,id,section,serial,seen,first)) do rows[#rows+1]=row end
                             ids[id]=true;seen[id]=true
                             rows[#rows+1]=''
                         end

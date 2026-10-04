@@ -375,6 +375,32 @@ read-only and link rows cannot be inserted. With no valid rows the slot row
 shows unchanged. Each `rows` entry is all or nothing: one invalid setting skips
 that entry, logged as `SLOT_ROW_SKIPPED`, and other entries still insert.
 
+Add `mcSlotLabel=1` to the slot row to let the host name the slot. The first
+inserted row then takes the slot row's `Label` and `mcLevel`; later rows keep
+their own. To make that row stand in for the group heading, suppress the
+heading with `mcHeading=0` on the group's Category and give the slot row a
+heading `mcLevel`:
+
+```ini
+[Category.Visuals]
+VisibleWhen=MCC_Page
+VisibleValues=1
+mcHeading=0
+
+[Setting.MCC_Visuals_Pending]
+...
+Label=Quickslots Visuals
+mcLevel=3
+mcReadOnly=1
+mcSlot=visuals
+mcSlotLabel=1
+```
+
+Filled, the page shows one `Quickslots Visuals` row whose value side is the
+contributed picker; with no rows, the placeholder shows under the same label.
+The row stays the source's setting: storage, Apply and visibility are unchanged.
+`mcHeading` itself is not transferred; a page has at most one level-one heading.
+
 The page's model sees only its own settings: its configuration, initialization
 and Apply event never include inserted rows. Inserted rows edit the source
 page's model. The page's Apply commits its own settings first, then each

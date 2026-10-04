@@ -20,6 +20,8 @@
   slot's page with the slot showing.
 - Show a hidden row-source page as an ordinary page when none of its rows has
   an available slot.
+- Add `mcSlotLabel=1`: the first inserted row takes the slot row's label and
+  level, so a host can present a contributed picker as a section heading.
 - Enlarge level-two setting labels, including Control Layout and Control Map,
   and inset submodule browser highlights with their rows.
 - Bind queued picker presses to the preceding hovered control sample and discard

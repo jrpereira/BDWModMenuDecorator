@@ -271,6 +271,31 @@ do
     assert(files['/mct/templates.ini']:find('MCT_Template=7',1,true) and #applied==1)
 end
 
+-- mcSlotLabel=1: the first inserted row takes the slot row's Label and mcLevel; later rows
+-- keep their own. Without inserts the placeholder shows unchanged.
+do
+    local labelled=host:gsub('Label=Quickslot templates\n','Label=Quickslots Visuals\nmcLevel=3\n')
+        :gsub('mcSlot=visuals\n','mcSlot=visuals\nmcSlotLabel=1\n')
+    files['/lab/mod_settings.ini']=labelled
+    local page=provider('Labelled','/lab/mod_settings.ini',labelled)
+    assert(page.choices[2].label=='Quickslots Visuals','empty slot: the placeholder keeps the host label')
+    local text
+    local function spy(content) text=content;return Choices.parse(content) end
+    local one={contributor='ModCoreTemplates',source=mct,settings={'MCT_Template'}}
+    local two={contributor='ModCoreTemplates',source=mct,settings={'MCT_Other'}}
+    logs={}
+    assert(Slots.load(page,{visuals={{contributor='Bad',source=mct,settings={'Missing'}},one,two}},read,spy,report),logs[1])
+    assert(ids(page.choices)=='MCC_Page,MCT_Template,MCT_Other,Speed')
+    assert(page.choices[2].label=='Quickslots Visuals' and page.choices[3].label=='Other',
+        'first inserted row named by the host, after a skipped entry too')
+    local first=text:match('%[Setting%.mcSlot%.%d+%]\n(.-)\n\n')
+    assert(first:find('mcLevel=3',1,true) and first:find('Label=Quickslots Visuals',1,true),first)
+    assert(select(2,text:gsub('mcLevel=3',''))==1,'only the first inserted row takes the level')
+    assert(page.choices[2].values[3]==7 and page.choices[2].mcSlotSource==mct,'still the source picker')
+end
+assert(not pcall(Choices.parse,host:gsub('mcSlot=visuals\n','mcSlotLabel=1\n')),'mcSlotLabel requires mcSlot')
+assert(not pcall(Choices.parse,host:gsub('mcSlot=visuals\n','mcSlot=visuals\nmcSlotLabel=yes\n')),'mcSlotLabel is 1')
+
 -- Slot declarations are validated with the manifest.
 assert(not pcall(Choices.parse,host:gsub('mcReadOnly=1\n','')),'mcSlot requires read-only')
 assert(not pcall(Choices.parse,host:gsub('mcSlot=visuals','mcSlot=a-b')),'slot names are words')
