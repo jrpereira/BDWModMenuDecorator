@@ -286,7 +286,7 @@ end
 -- read: loads a page manifest from disk.
 function M.install(choices,report,contributions,read)
     if choices.mcSlotsVersion then return nil end
-    local parse,open=choices.parse,choices.open
+    local parse=choices.parse
     local controller={inserts={},applied=nil,address=contributions.address,provider=contributions.provider}
     function controller:declares(provider,name) return M.declares(provider,name,read) end
     local function publish(provider,event)
@@ -295,7 +295,17 @@ function M.install(choices,report,contributions,read)
         if not ok then report('SLOT_APPLY_EVENT_FAILED',provider.id..': '..tostring(err)) end
     end
     choices.parse=function(content) return M.parse(content,parse(content)) end
-    choices.open=function(provider) return M.open(provider,open,publish,report) end
+    -- Providers may install their own storage wrapper later (ModCoreControls does on first
+    -- build). The slot model must stay outermost so inserted rows never reach that storage.
+    local outermost
+    function controller:outermost()
+        if choices.open==outermost then return false end
+        local inner=choices.open
+        outermost=function(provider) return M.open(provider,inner,publish,report) end
+        choices.open=outermost
+        return true
+    end
+    controller:outermost()
     function controller:load(provider,read)
         return M.load(provider,self.inserts[contributions.provider(provider.id)],read,choices.parse,report)
     end

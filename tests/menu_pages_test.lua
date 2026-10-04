@@ -162,7 +162,7 @@ assert(visuals[1].source==hostPage,'visible source reuses the built page')
 assert(visuals[2].source.id=='MCT.hidden' and visuals[2].source.mcManifest==manifest,'hidden source still has a provider')
 local slotApi={build=function(_,items,_,api) return api end}
 local loads={}
-local controller={address=Menu.address,provider=Menu.provider,declares=function() return true end,load=function(self,provider,readPath) loads[#loads+1]={self=self,id=provider.id,read=readPath} end}
+local controller={address=Menu.address,provider=Menu.provider,declares=function() return true end,outermost=function() end,load=function(self,provider,readPath) loads[#loads+1]={self=self,id=provider.id,read=readPath} end}
 local dmmLoads={}
 local reader=function() end
 Pages.install(slotApi,parse,function() return {slotted} end,report,controller,reader)

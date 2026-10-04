@@ -231,6 +231,7 @@ function M.install(pages,parse,contributions,report,slots,read)
         if not ok then once('CONTRIBUTIONS_UNAVAILABLE',tostring(list));list={} end
         M.apply(providers,list,parse,state,once,slots)
         if slots then
+            slots:outermost()
             slots.inserts,slots.applied=state.inserts,api.applied
             local loadProvider=api.loadProvider
             local wrapped={}
@@ -238,6 +239,7 @@ function M.install(pages,parse,contributions,report,slots,read)
             -- Splice after DMM loads the page and before its rows are built.
             wrapped.loadProvider=function(provider)
                 if loadProvider then loadProvider(provider) end
+                slots:outermost()
                 local ok,err=pcall(slots.load,slots,provider,read)
                 if not ok then once('SLOT_ROWS_SKIPPED',tostring(provider.id)..': '..tostring(err)) end
             end

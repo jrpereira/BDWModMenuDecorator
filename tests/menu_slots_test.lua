@@ -242,6 +242,35 @@ assert(controller:load(mcc,read))
 mcc.choices=Choices.parse(host)
 assert(controller:load(mcc,read) and mcc.mcSlotBase.choices~=base and #mcc.mcSlotBase.choices==3)
 
+-- A provider storage wrapper installed later (as ModCoreControls does) ends up inside the
+-- slot model once outermost() runs, so it only ever sees the host's own settings.
+do
+    controller.inserts={controls={visuals={entry}}}
+    files['/mct/templates.ini']='[Templates]\nMCT_Template=5\nMCT_Other=1\n'
+    assert(controller:load(mcc,read))
+    local storage,seen={},nil
+    local before=Choices.open
+    Choices.open=function(p)
+        if p.id~='ModCoreControls' then return before(p) end
+        local model=before(p)
+        seen=p.choices
+        function model:apply()
+            for i,item in ipairs(self.items) do storage[item.id]=self.pending[i] end
+            for i,value in ipairs(self.pending) do self.committed[i]=value end
+            return true,nil,{values=storage,changes={}}
+        end
+        return model
+    end
+    assert(controller:outermost() and not controller:outermost(),'re-wraps once')
+    applied={}
+    local composite=Choices.open(mcc)
+    assert(seen==mcc.mcSlotBase.choices,'storage sees the unspliced host')
+    composite:set(1,1);composite:set(2,7);composite:set(3,1)
+    assert(composite:apply())
+    assert(storage.Speed==1 and storage.MCT_Template==nil,'inserted rows never reach host storage')
+    assert(files['/mct/templates.ini']:find('MCT_Template=7',1,true) and #applied==1)
+end
+
 -- Slot declarations are validated with the manifest.
 assert(not pcall(Choices.parse,host:gsub('mcReadOnly=1\n','')),'mcSlot requires read-only')
 assert(not pcall(Choices.parse,host:gsub('mcSlot=visuals','mcSlot=a-b')),'slot names are words')
