@@ -5,7 +5,9 @@ local function fails(fn,pattern)
     assert(not ok and tostring(err):find(pattern,1,true),tostring(err))
 end
 local choices={index=function(s,value) return type(value)=='number' and value>=0 and value<=255 end}
-local emptyPath=os.tmpname()
+-- os.tmpname always uses /tmp; honour TMPDIR so the suite runs in sandboxes too.
+local emptyPath=os.getenv('TMPDIR') and (os.getenv('TMPDIR'):gsub('/+$','')..'/mcs_init_config_'..os.time()..'.ini')
+    or os.tmpname()
 local emptyFile=assert(io.open(emptyPath,'wb'));assert(emptyFile:close())
 assert(Config.fs.read(emptyPath)=='','empty files must be valid configuration metadata')
 assert(os.remove(emptyPath))
