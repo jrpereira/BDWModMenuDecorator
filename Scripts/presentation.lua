@@ -815,6 +815,7 @@ function M.install(choices,controls,pages)
                 'KEM page header layout')
             parent:ClearChildren()
             for index,child in ipairs(children) do
+                if index==1 then child.padding.Bottom=child.padding.Bottom+20 end
                 api.need(parent:AddChild(index==1 and host or child.widget),'KEM page header child')
                     :SetPadding(child.padding)
             end

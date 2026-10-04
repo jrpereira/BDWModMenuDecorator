@@ -12,6 +12,7 @@
 
 ## Unreleased
 
+- Add 20 pixels of bottom spacing beneath the page header.
 - Add slot rows: a page marks a read-only row with `mcSlot=<name>` and other
   contributors publish their own settings into it (`rows` in
   `menu_contributions.lua`, descriptor contract 2). Inserted rows stay owned,
