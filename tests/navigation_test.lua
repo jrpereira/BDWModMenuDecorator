@@ -35,7 +35,7 @@ VisibleValues=1
 ]]
 local items=Choices.parse(manifest)
 assert(#items==2 and items[1].mcNavigation and not items[2].mcNavigation)
-local path='/tmp/kem-navigation-test/config.ini'
+local path='/tmp/mc-navigation-test/config.ini'
 local files={[path]='[Settings]\nReal=4\n'}
 Choices.fs={
     read=function(p) return files[p] end,
@@ -43,7 +43,7 @@ Choices.fs={
     rename=function(a,b) assert(files[a]);files[b],files[a]=files[a],nil end,
     remove=function(p) files[p]=nil end,
 }
-local provider={id='NavigationTest',path='/tmp/kem-navigation-test/mod_settings.ini',choices=items}
+local provider={id='NavigationTest',path='/tmp/mc-navigation-test/mod_settings.ini',choices=items}
 local model=Choices.open(provider)
 assert(not model.error,model.error)
 assert(not model:dirty() and not model:visibility()[2])

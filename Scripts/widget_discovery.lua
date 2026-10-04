@@ -98,7 +98,7 @@ function M.choiceRowFromWrapper(wrapper)
             if className(host)=='Overlay' then
                 for n=0,childCount(host)-1 do
                     local marker=childAt(host,n)
-                    if isA(marker,'TextBlock') and (textOf(marker) or ''):match('^KEM_PAIR_HOST_1\n') then
+                    if isA(marker,'TextBlock') and (textOf(marker) or ''):match('^MC_PAIR_HOST_1\n') then
                         pairHost,pairHostBox=host,box;break
                     end
                 end
@@ -143,7 +143,7 @@ function M.rowsFromScroll(scroll)
         local child=childAt(scroll,i)
         local content=contentOf(child)
         if M.isTextBlock(content) then
-            local path=(textOf(content) or ''):match('^KEM_HEADER_ROW\n(.+)$')
+            local path=(textOf(content) or ''):match('^MC_HEADER_ROW\n(.+)$')
             if path then
                 local promoted=StaticFindObject(path)
                 if valid(promoted) then child=promoted end
@@ -157,7 +157,7 @@ function M.rowsFromScroll(scroll)
                 if valid(marker) and isA(marker,'TextBlock') then
                     local text=textOf(marker) or ''
                     local function decode(value) return (value:gsub('%%(%x%x)',function(hex) return string.char(tonumber(hex,16)) end)) end
-                    if text:sub(1,14)=='KEM_SETTING_5\n' then
+                    if text:sub(1,13)=='MC_SETTING_5\n' then
                         local fields={}
                         for value in (text..'\n'):gmatch('(.-)\n') do fields[#fields+1]=value end
                         local count=tonumber(fields[19])
@@ -179,7 +179,7 @@ function M.rowsFromScroll(scroll)
                             row.dmmSetting=setting
                         end
                     end
-                    if text:match('^KEM_MODE\n') then row.modeState=marker end
+                    if text:match('^MC_MODE\n') then row.modeState=marker end
                 end
             end
             rows[#rows+1]=row

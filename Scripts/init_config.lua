@@ -310,8 +310,8 @@ end
 function M.commit(plan,fs)
     if plan.original==plan.content then return false end
     local path=plan.path
-    local tmp,backup=path..'.kem-init.tmp',path..'.kem-init.bak'
-    for _,suffix in ipairs({'.kem-init.tmp','.kem-init.bak','.dmm-toggle.tmp','.dmm-toggle.bak'}) do
+    local tmp,backup=path..'.mc-init.tmp',path..'.mc-init.bak'
+    for _,suffix in ipairs({'.mc-init.tmp','.mc-init.bak','.dmm-toggle.tmp','.dmm-toggle.bak'}) do
         assert(fs.read(path..suffix)==nil,'previous config transaction needs review: '..path..suffix)
     end
     assert(fs.read(path)==plan.original,'config changed before initialization')

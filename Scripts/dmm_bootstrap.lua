@@ -3,8 +3,8 @@
 -- gating in this file so the integration transaction has one owner.
 local M={version=1}
 
-local READY='KEM_DMM_Extension_v1.ready'
-local CLAIM='KEM_DMM_Bootstrap_v1.initialized'
+local READY='MC_DMM_Extension_v1.ready'
+local CLAIM='MC_DMM_Bootstrap_v1.initialized'
 -- This identifies the DMM 1.0.7 patch format already installed on existing systems.
 local PATCH_MARKER='-- AMM_DMM_LIFECYCLE_PATCH=1'
 local BACKUP_SUFFIX='.amm-1.0.7.bak'

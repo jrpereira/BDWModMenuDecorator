@@ -413,12 +413,12 @@ ui.mcTestSetText(header.value,'Off *')
 assert(header.value.text=='Off','Dirty suffix must never flicker in the value text')
 local signal
 for _,child in ipairs(header.wrapper:GetContent().children) do
-    if child.text and child.text:match('^KEM_VALUE_DIRTY_1\n') then signal=child end
+    if child.text and child.text:match('^MC_VALUE_DIRTY_1\n') then signal=child end
 end
-assert(signal and signal.text=='KEM_VALUE_DIRTY_1\n1\nOff')
+assert(signal and signal.text=='MC_VALUE_DIRTY_1\n1\nOff')
 ui.model.committed[4]=0
 ui.mcTestSetText(header.value,'Off')
-assert(signal.text=='KEM_VALUE_DIRTY_1\n0\nOff',
+assert(signal.text=='MC_VALUE_DIRTY_1\n0\nOff',
     'Apply must signal clean state even when the displayed value text is unchanged')
 ui.model:set(1,0);ui:refresh()
 assert(modeRow.mcPairHostBox.visible==1 and ui.model.pending[6]==3,

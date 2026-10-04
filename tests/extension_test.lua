@@ -52,7 +52,7 @@ assert(installs[8].name=='page_links' and installs[8].args[1]==pages)
 for _,name in ipairs({'providerPrepared','providerRefreshed','hostClosing'}) do
  assert(type(callbacks[name])=='function');callbacks[name]({});assert(installs[#installs].event==name)
 end
-assert(shared['KEM_DMM_Extension_v1.ready']=='1')
+assert(shared['MC_DMM_Extension_v1.ready']=='1')
 assert(not pcall(extension.install,{version=2,choices=choices,controls=controls,pages=pages,events=events}))
 assert(not pcall(extension.install,{version=1,choices=choices,controls=controls,events=events}))
 print('PASS pure-Lua DMM extension loads owned modules in order and rejects incompatible APIs')

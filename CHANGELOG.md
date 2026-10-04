@@ -12,6 +12,7 @@
 
 ## Unreleased
 
+- Rename runtime markers, DMM lifecycle identifiers, and initialization file prefixes from `kem` to `mc`.
 - Add 20 pixels of bottom spacing beneath the page header.
 - Add slot rows: a page marks a read-only row with `mcSlot=<name>` and other
   contributors publish their own settings into it (`rows` in
@@ -44,7 +45,7 @@
 ## v0.3.0
 
 - Rename the runtime and DMM extension to KEngineMenu (KEM), packaged under `_KEngineMenu`.
-- Use `kem*` manifest metadata and `KEM_` runtime markers without reading old `amm*` metadata or migrating old settings.
+- Use `mc*` manifest metadata and `MC_` runtime markers without reading old `amm*` metadata or migrating old settings.
 - Keep generated KEngineTemplates module-page title controls separate from its ordinary Templates page.
 
 ## v0.2.25

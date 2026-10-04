@@ -59,6 +59,6 @@ return {
             dmm.events:on(name,function(context) publisher:publish(name,context) end)
         end
         assert(ModRef and type(ModRef.SetSharedVariable)=='function','DMM extension handshake unavailable')
-        ModRef:SetSharedVariable('KEM_DMM_Extension_v1.ready','1')
+        ModRef:SetSharedVariable('MC_DMM_Extension_v1.ready','1')
     end,
 }

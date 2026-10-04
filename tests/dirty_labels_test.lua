@@ -133,15 +133,15 @@ changed(toggle,'Off *')
 assert(toggle.labelWidget.text=='Enabled' and star(toggle).visibility==4 and toggle.valueWidget.text=='Off')
 changed(toggle,'On') -- Restore changes the rendered value and clears the marker.
 assert(toggle.labelWidget.text=='Enabled' and star(toggle).visibility==2)
-local signal=widget('TextBlock','KEM_VALUE_DIRTY_1\n0\nOn')
+local signal=widget('TextBlock','MC_VALUE_DIRTY_1\n0\nOn')
 signal.outer=host.WidgetTree;toggle.shell:AddChildToOverlay(signal)
 controller:bind(all,routes,{[key]=mode})
-signal:SetText({ftext='KEM_VALUE_DIRTY_1\n1\nOff'})
+signal:SetText({ftext='MC_VALUE_DIRTY_1\n1\nOff'})
 toggle.valueWidget:SetText({ftext='Off'})
 controller:refresh(host)
 assert(star(toggle).visibility==4 and toggle.valueWidget.text=='Off',
     'The DMM signal must show dirty state without a value-text suffix')
-signal:SetText({ftext='KEM_VALUE_DIRTY_1\n0\nOff'})
+signal:SetText({ftext='MC_VALUE_DIRTY_1\n0\nOff'})
 controller:refresh(host)
 assert(star(toggle).visibility==2,
     'Apply must clear the star even when the displayed value stays Off')

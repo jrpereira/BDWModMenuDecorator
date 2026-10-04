@@ -1,7 +1,7 @@
 -- Runs in DMM's Lua state. Uses its existing menu tick and model, never a timer.
 local M={version=1}
-local pairHostMarkerPrefix='KEM_PAIR_HOST_1\n'
-local dirtySignalPrefix='KEM_VALUE_DIRTY_1\n'
+local pairHostMarkerPrefix='MC_PAIR_HOST_1\n'
+local dirtySignalPrefix='MC_VALUE_DIRTY_1\n'
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function identityText(value)
     return tostring(value):gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')
@@ -9,7 +9,7 @@ end
 local function settingIdentity(index,provider,setting)
     local values,labels=setting.values or {},setting.labels or {}
     assert(#values==#labels and #values<=64,'invalid setting identity choices')
-    local fields={'KEM_SETTING_5',tostring(index),identityText(provider.id),identityText(setting.id),
+    local fields={'MC_SETTING_5',tostring(index),identityText(provider.id),identityText(setting.id),
         setting.kind or '',tostring(setting.minimum or ''),tostring(setting.maximum or ''),
         tostring(setting.step or ''),tostring(setting.decimals or ''),identityText(setting.prefix or ''),
         identityText(setting.suffix or ''),setting.mcKeybind and '1' or '0',
@@ -281,7 +281,7 @@ function M.install(choices,controls,pages)
                     valueSignals[row.value]={marker=marker,index=i}
                 end
                 if setting.mcFixedMode then
-                    row.mcModeState=api.caption(tree,'KEM_MODE\nfixed')
+                    row.mcModeState=api.caption(tree,'MC_MODE\nfixed')
                     row.mcModeState:SetVisibility(1)
                     add(row.wrapper:GetContent(),row.mcModeState)
                 end
@@ -297,7 +297,7 @@ function M.install(choices,controls,pages)
                     assert(not panel.mcHeader,'only one level-one setting per provider')
                     local placeholder=new('SizeBox')
                     local path=assert(row.wrapper:GetFullName():match('^%S+ (.+)$'))
-                    local marker=api.caption(tree,'KEM_HEADER_ROW\n'..path)
+                    local marker=api.caption(tree,'MC_HEADER_ROW\n'..path)
                     api.need(placeholder:SetContent(marker),'KEM header identity')
                     placeholder:SetVisibility(1)
                     local children={}
@@ -543,7 +543,7 @@ function M.install(choices,controls,pages)
                     local target=setting.mcPairIndex
                     local editable=target and logicalVisibility[target]==true or false
                     if row.mcModeEditable~=editable then
-                        api.setText(row.mcModeState,'KEM_MODE\n'..(editable and 'editable' or 'fixed'))
+                        api.setText(row.mcModeState,'MC_MODE\n'..(editable and 'editable' or 'fixed'))
                         row.mcModeEditable=editable
                     end
                 end

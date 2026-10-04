@@ -1,8 +1,8 @@
 -- Presentation only: DMM owns dirty state, pending values, Apply and Restore.
 local Discovery=require('widget_discovery')
 local M={}
-local PREFIX='KEM_DIRTY_3\n'
-local SIGNAL='KEM_VALUE_DIRTY_1\n'
+local PREFIX='MC_DIRTY_3\n'
+local SIGNAL='MC_VALUE_DIRTY_1\n'
 local function encode(s) return (s:gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')) end
 local function decode(s) return (s:gsub('%%(%x%x)',function(h) return string.char(tonumber(h,16)) end)) end
 local function name(value) return type(value)=='string' and value or value:ToString() end
