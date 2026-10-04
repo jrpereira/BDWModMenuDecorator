@@ -49,7 +49,54 @@ function M.wrap(page,providers,api)
         status(target..' page is unavailable.')
         return true
     end
+    if type(page.showDetail)=='function' then M.slotLinks(page,providers) end
     return page
+end
+
+-- Set the navigation pickers that gate a row so it shows. Navigation never marks the page dirty.
+local function reveal(model,index,seen)
+    seen=seen or {}
+    if seen[index] then return end
+    seen[index]=true
+    for _,rule in ipairs(model.items[index].visibility or {}) do
+        local target=model.items[rule.target]
+        reveal(model,rule.target,seen)
+        if target.mcNavigation and not rule.values[model.pending[rule.target]] then
+            for _,value in ipairs(target.values) do
+                if rule.values[value] then model:set(rule.target,value);break end
+            end
+        end
+    end
+end
+M.reveal=reveal
+
+-- A link page (mcLinkSlot) opens its host page with the slot's rows showing.
+function M.slotLinks(page,providers)
+    local showDetail=page.showDetail
+    function page:showDetail(rowIndex)
+        local row=self.rows and self.rows[rowIndex]
+        local link=row and providers[row.providerIndex] and providers[row.providerIndex].mcLinkSlot
+        if not link or not link.host then return showDetail(self,rowIndex) end
+        for hostRow,candidate in ipairs(self.rows) do
+            if providers[candidate.providerIndex].id==link.host then
+                local result=showDetail(self,hostRow)
+                local controls=self.controls
+                local model=controls and controls.model
+                if model and not model.error then
+                    for index,setting in ipairs(model.items) do
+                        if setting.mcSlotName==link.slot or setting.mcSlot==link.slot then
+                            reveal(model,index)
+                            controls:refresh()
+                            controls:select(index,true)
+                            break
+                        end
+                    end
+                end
+                return result
+            end
+        end
+        return showDetail(self,rowIndex)
+    end
 end
 
 function M.install(pages)

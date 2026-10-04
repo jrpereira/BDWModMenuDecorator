@@ -1,15 +1,15 @@
 -- Public client for contributing menu pages through ModCoreSettings.
 -- Consumers may vendor this file unchanged. It only writes data files and one shared
 -- variable per contributor; ModCoreSettings reads them while building the menu.
--- Descriptors use contract 1, or contract 2 when they carry rows for another page's slot.
+-- Descriptors use contract 1, or contract 2 when they carry slot rows or slot links.
 local M={version=2,contract=1,rowsContract=2}
 local PREFIX='MCS_MenuContrib_v1_'
 M.prefix,M.index=PREFIX,PREFIX..'index'
 local MAX_PAGES,MAX_ROWS,MAX_ROW_SETTINGS,MAX_MANIFEST=256,64,32,262144
 local PAGE_KEYS={id=true,name=true,author=true,version=true,description=true,manifest=true,
-    configDirectory=true,visible=true,under=true,attach=true,group=true}
+    configDirectory=true,visible=true,under=true,attach=true,group=true,link=true}
 local DESCRIPTOR_KEYS={id=true,name=true,author=true,version=true,description=true,manifestFile=true,
-    configDirectory=true,visible=true,under=true,attach=true,group=true}
+    configDirectory=true,visible=true,under=true,attach=true,group=true,link=true}
 local ROW_KEYS={page=true,slot=true,settings=true}
 
 -- A slot address is '<provider>:<slot>'. A ModCore<Name> provider may be written as its
@@ -81,6 +81,15 @@ local function check(contributor,contribution)
         if page.under~=nil then
             line(page.under,128,where..' under')
             assert(seen[page.under],where..': under must name an earlier page')
+            assert(not seen[page.under].link,where..': a link page cannot have children')
+        end
+        -- A link page opens another provider's page at a slot; it has no settings of its own.
+        if page.link~=nil then
+            local target=M.address(page.link)
+            assert(target,'invalid '..where..' link address')
+            assert(page.manifest==nil,where..': a link page cannot have a manifest')
+            assert(target~=M.provider(contributor) and target~=M.provider(page.id),
+                where..': link must open another provider')
         end
         if page.attach~=nil then
             line(page.attach,200,where..' attach')
@@ -137,6 +146,13 @@ local function unescape(value)
     end))
 end
 
+-- Slot rows and links need a ModCoreSettings build that understands slots.
+function M.needsRows(contribution)
+    if contribution.rows and #contribution.rows>0 then return true end
+    for _,page in ipairs(contribution.pages) do if page.link then return true end end
+    return false
+end
+
 function M.descriptorName(generation) return 'mcs_menu.'..generation..'.ini' end
 function M.manifestName(generation,n) return 'mcs_menu.'..generation..'.'..n..'.ini' end
 
@@ -144,12 +160,12 @@ function M.manifestName(generation,n) return 'mcs_menu.'..generation..'.'..n..'.
 function M.encode(contributor,generation,contribution)
     check(contributor,contribution)
     local rows=contribution.rows or {}
-    local contract=#rows>0 and M.rowsContract or M.contract
+    local contract=M.needsRows(contribution) and M.rowsContract or M.contract
     local out={'[Contribution]','contract='..contract,'id='..contributor,'generation='..generation}
     local files={}
     for n,page in ipairs(contribution.pages) do
         out[#out+1]='[Page.'..n..']'
-        for _,key in ipairs({'id','name','author','version','description','configDirectory','under','attach','group'}) do
+        for _,key in ipairs({'id','name','author','version','description','configDirectory','under','attach','group','link'}) do
             if page[key]~=nil then out[#out+1]=key..'='..escape(page[key]) end
         end
         if page.visible~=nil then out[#out+1]='visible='..(page.visible and '1' or '0') end
@@ -198,7 +214,7 @@ function M.decode(text,read)
             end
         end
     end
-    assert(tonumber(header.contract)==(#rows>0 and M.rowsContract or M.contract),
+    assert(tonumber(header.contract)==(M.needsRows({pages=pages,rows=rows}) and M.rowsContract or M.contract),
         'unsupported contract '..tostring(header.contract))
     local generation=tonumber(header.generation)
     assert(math.type(generation)=='integer' and generation>=1,'invalid generation')

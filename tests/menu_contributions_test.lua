@@ -93,6 +93,22 @@ assert(not pcall(Menu.decode,descriptor..'[Page.4]\nid=MCT.late\nname=Late\n',fu
     'pages come before rows')
 assert(Menu.decode(Menu.encode('MCT',6,{pages={pages[1]}}),function() end).rows==nil)
 
+-- Link pages open another provider's slot; they carry no manifest or children.
+local linked={pages={{id='MCT',name='Templates'},
+    {id='MCT.module.Fangdango',name='Fangdango',attach='Fangdango',group='module',link='controls:visuals'}}}
+assert(Menu.validate('MCT',linked))
+fails('invalid page 1 link address','MCT',{pages={{id='MCT',name='a',link='visuals'}}})
+fails('cannot have a manifest','MCT',{pages={{id='MCT',name='a',link='controls:visuals',
+    manifest=manifest,configDirectory='/c'}}})
+fails('link must open another provider','ModCoreControls',{pages={{id='ModCoreControls',name='a',link='controls:x'}}})
+fails('a link page cannot have children','MCT',{pages={{id='MCT',name='a',link='controls:visuals'},
+    {id='MCT.b',name='b',under='MCT'}}})
+descriptor=Menu.encode('MCT',7,linked)
+assert(descriptor:find('contract=2',1,true) and descriptor:find('link=controls:visuals',1,true))
+decoded=Menu.decode(descriptor,function() end)
+assert(decoded.pages[2].link=='controls:visuals' and decoded.rows==nil)
+assert(not pcall(Menu.decode,descriptor:gsub('contract=2','contract=1'),function() end))
+
 -- Publishing flips the channel only after files are written and keeps one older generation.
 local host=shared()
 local store,write,remove=files()

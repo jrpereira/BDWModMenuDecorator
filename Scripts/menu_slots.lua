@@ -108,7 +108,7 @@ function M.load(provider,inserts,read,parse,report)
         local list,lines=sections(text)
         -- Splicing shifts positions, so implicit setting_<n> ids would change meaning.
         for _,section in ipairs(list) do assert(section.fields.Id,'host settings need explicit Id') end
-        local replaced,added,sources,used,serial={},0,{},{},0
+        local replaced,added,sources,used,serial,slotOf={},0,{},{},0,{}
         for _,setting in ipairs(base.choices) do used[setting.id]=true end
         for _,section in ipairs(list) do
             local name=section.fields.mcSlot
@@ -128,7 +128,9 @@ function M.load(provider,inserts,read,parse,report)
                         end
                     end)
                     if fine then
-                        for id in pairs(ids) do used[id]=true;sources[id]=entry.source;mine[id]=true end
+                        for id in pairs(ids) do
+                            used[id]=true;sources[id]=entry.source;mine[id]=true;slotOf[id]=name
+                        end
                         earlier[entry.contributor]=mine
                         for _,row in ipairs(rows) do generated[#generated+1]=row end
                         added=added+#entry.settings
@@ -151,7 +153,9 @@ function M.load(provider,inserts,read,parse,report)
         local choices=parse(table.concat(out,'\n'))
         for _,setting in ipairs(choices) do
             local source=sources[setting.id]
-            if source then setting.mcSlotSource=source;sources[setting.id]=nil end
+            if source then
+                setting.mcSlotSource,setting.mcSlotName=source,slotOf[setting.id];sources[setting.id]=nil
+            end
         end
         assert(next(sources)==nil,'inserted setting missing after parse')
         local removed=0
@@ -270,11 +274,21 @@ function M.open(provider,open,publish,report)
     return model
 end
 
+-- Whether a page's manifest declares a slot, without loading its settings.
+function M.declares(provider,name,read)
+    local ok,text=pcall(function() return provider.mcManifest or read(provider.path) end)
+    if not ok or type(text)~='string' then return false end
+    for _,section in ipairs(sections(text)) do if section.fields.mcSlot==name then return true end end
+    return false
+end
+
 -- contributions: the menu_contributions module, which owns slot address syntax.
-function M.install(choices,report,contributions)
+-- read: loads a page manifest from disk.
+function M.install(choices,report,contributions,read)
     if choices.mcSlotsVersion then return nil end
     local parse,open=choices.parse,choices.open
-    local controller={inserts={},applied=nil,address=contributions.address}
+    local controller={inserts={},applied=nil,address=contributions.address,provider=contributions.provider}
+    function controller:declares(provider,name) return M.declares(provider,name,read) end
     local function publish(provider,event)
         if not controller.applied then return end
         local ok,err=pcall(controller.applied,provider,event)

@@ -152,7 +152,8 @@ local slotted={id='MCT',pages={{id='MCT',name='Templates',manifest=manifest,conf
 state={}
 providers={mod('Host')}
 Pages.apply(providers,{slotted,{id='Bad',pages={{id='Bad',name='x',manifest='broken',configDirectory='/b'}},
-    rows={{page='Bad',slot='Host:Visuals',settings={'C'}}}}},parse,state,report,Menu.address)
+    rows={{page='Bad',slot='Host:Visuals',settings={'C'}}}}},parse,state,report,
+    {address=Menu.address,provider=Menu.provider,declares=function() return true end})
 local visuals=state.inserts.Host.Visuals
 assert(#visuals==2 and visuals[1].contributor=='MCT' and visuals[1].settings[1]=='A')
 local hostPage
@@ -161,7 +162,7 @@ assert(visuals[1].source==hostPage,'visible source reuses the built page')
 assert(visuals[2].source.id=='MCT.hidden' and visuals[2].source.mcManifest==manifest,'hidden source still has a provider')
 local slotApi={build=function(_,items,_,api) return api end}
 local loads={}
-local controller={address=Menu.address,load=function(self,provider,readPath) loads[#loads+1]={self=self,id=provider.id,read=readPath} end}
+local controller={address=Menu.address,provider=Menu.provider,declares=function() return true end,load=function(self,provider,readPath) loads[#loads+1]={self=self,id=provider.id,read=readPath} end}
 local dmmLoads={}
 local reader=function() end
 Pages.install(slotApi,parse,function() return {slotted} end,report,controller,reader)
@@ -175,6 +176,36 @@ controller.load=function() error('splice exploded') end
 logs={}
 passed.loadProvider({id='Host'})
 assert(logs[1]:find('splice exploded',1,true),'a splice failure never escapes page load')
+
+-- Link pages show while their host declares the slot and the slot has rows; otherwise
+-- they are hidden like visible=false pages.
+do
+    local declared={visuals=true}
+    local slots={address=Menu.address,provider=Menu.provider,
+        declares=function(_,provider,name) return provider.id=='ModCoreControls' and declared[name] end}
+    local link={id='MCT',pages={{id='MCT',name='Templates',manifest=manifest,configDirectory='/c'},
+        {id='MCT.module.Fangdango',name='Fangdango',attach='Fangdango',group='module',link='controls:visuals'}},
+        rows={{page='MCT',slot='controls:visuals',settings={'A'}}}}
+    local function build(contributions,menu)
+        local list=menu or {mod('ModCoreControls','Controls'),placeholder('Fangdango'),mod('Zeta')}
+        Pages.apply(list,contributions,parse,{},report,slots)
+        return list
+    end
+    local list=build({link})
+    expect(list,'ModCoreControls,MCT.module.Fangdango,MCT,Zeta','link replaces its placeholder')
+    local entry=list[2]
+    assert(entry.mcLinkSlot.host=='ModCoreControls' and entry.mcLinkSlot.slot=='visuals')
+    assert(not entry.noSettings and entry.settingsCount==0 and #entry.choices==0,'selectable without settings')
+    local unfilled={id='MCT',pages=link.pages}
+    expect(build({unfilled}),'ModCoreControls,MCT,Zeta','an empty slot hides the link and its placeholder')
+    expect(build({link},{placeholder('Fangdango'),mod('Zeta')}),'MCT,Zeta','no host, no link')
+    declared.visuals=nil
+    expect(build({link}),'ModCoreControls,MCT,Zeta','undeclared slot hides the link')
+    declared.visuals=true
+    local list2={mod('ModCoreControls','Controls'),placeholder('Fangdango')}
+    Pages.apply(list2,{link},parse,{},report)
+    expect(list2,'ModCoreControls,MCT','without slot support links are hidden')
+end
 
 -- The real DMM parser accepts generated manifests through the installed choices chain.
 local choicesPath=os.getenv('DMM_CHOICES_PATH')

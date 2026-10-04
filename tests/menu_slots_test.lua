@@ -118,7 +118,10 @@ assert(controller:load(mcc,read))
 assert(ids(mcc.choices)=='MCC_Page,MCT_Template,Speed',ids(mcc.choices))
 local template=mcc.choices[2]
 assert(template.group=='Visuals' and template.label=='Quickslots' and template.description=='Choose a template')
-assert(template.mcSlotSource==mct and not template.mcHeading and not template.file)
+assert(template.mcSlotSource==mct and template.mcSlotName=='visuals' and not template.mcHeading and not template.file)
+assert(Slots.declares(mcc,'visuals',read) and not Slots.declares(mcc,'other',read))
+assert(not Slots.declares(mcc,'visuals',function() error('gone') end) and Slots.declares(mct,'x',read)==false)
+assert(controller:declares(mcc,'visuals')==false,'the controller reads with the reader it was installed with')
 assert(mcc.settingsCount==3 and mcc.mcSlotBase.choices==base)
 assert(controller:load(mcc,read) and ids(mcc.choices)=='MCC_Page,MCT_Template,Speed','reload is idempotent')
 

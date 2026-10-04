@@ -310,7 +310,8 @@ pages:publish({pages={
 Page fields: `id` (the contributor id or `<id>.*`; it is the `providerId` in Apply
 notifications), `name`, optional `author`, `version`, `description`, `visible`,
 `manifest` with `configDirectory`, and at most one of `under` (an earlier page of
-the same contributor) or `attach` (a mod folder name). `group='module'` puts the
+the same contributor) or `attach` (a mod folder name). `link` makes a
+[slot link](#slot-rows) entry. `group='module'` puts the
 page in the ModCore browser group.
 
 Placement on every menu build:
@@ -371,7 +372,8 @@ slot row's rule; a slot row with its own `VisibleWhen` rejects rows that bring
 one. Source Category rules are not carried. Only core DMM fields are copied, so
 inserted rows render as plain pickers, toggles or sliders. Presets, navigation,
 read-only and link rows cannot be inserted. With no valid rows the slot row
-shows unchanged. A failed row is skipped and logged on its own.
+shows unchanged. Each `rows` entry is all or nothing: one invalid setting skips
+that entry, logged as `SLOT_ROW_SKIPPED`, and other entries still insert.
 
 The page's model sees only its own settings: its configuration, initialization
 and Apply event never include inserted rows. Inserted rows edit the source
@@ -383,7 +385,14 @@ open leaves its rows inert. As on any page, unapplied changes are discarded
 when the page closes, so the same setting on two pages never holds two pending
 values.
 
-Rows need descriptor contract 2, so a ModCoreSettings build that predates
+A page with `link='<provider>:<slot>'` and no manifest is a browser entry for
+that slot. Selecting it opens the slot's page and sets the navigation pickers
+that gate the slot so its rows show; navigation never marks the page dirty.
+The entry is listed only while the host page declares the slot and the slot
+has rows. Otherwise it is hidden like `visible=false`, including any detected
+placeholder it claims. Link pages cannot have children.
+
+Rows and links need descriptor contract 2, so a ModCoreSettings build that predates
 slots skips the whole contribution, pages included.
 
 ### Page links

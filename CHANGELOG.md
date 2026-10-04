@@ -16,6 +16,8 @@
   contributors publish their own settings into it (`rows` in
   `menu_contributions.lua`, descriptor contract 2). Inserted rows stay owned,
   stored and applied by their source page.
+- Add slot links: a contributed page with `link='<provider>:<slot>'` opens that
+  slot's page with the slot showing.
 - Enlarge level-two setting labels, including Control Layout and Control Map,
   and inset submodule browser highlights with their rows.
 - Bind queued picker presses to the preceding hovered control sample and discard

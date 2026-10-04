@@ -62,7 +62,10 @@ local function generated(contribution,page,parse)
         choices=choices,settingsCount=#choices,choicesLoaded=true,deferred=false,
         path=page.configDirectory and (page.configDirectory:gsub('[/\\]+$','')..'/mod_settings.ini') or nil,
         mcContribution=contribution.id,mcBrowserGroup=page.group,mcManifest=page.manifest}
-    if #choices==0 then provider.noSettings,provider.mcBrowserHeading=true,page.manifest==nil end
+    if page.link then
+        -- Opens another page; it is selectable although it has no settings of its own.
+        provider.mcLinkSlot={address=page.link}
+    elseif #choices==0 then provider.noSettings,provider.mcBrowserHeading=true,page.manifest==nil end
     return provider
 end
 
@@ -82,9 +85,10 @@ end
 
 -- Rebuild contributed pages in DMM's persistent provider list. state keeps the
 -- placeholder entries hidden by the previous build so they return when unused.
--- state.inserts is keyed by provider address and slot name; address parses '<provider>:<slot>'
--- (menu_contributions.address). Without it, rows are ignored.
-function M.apply(providers,contributions,parse,state,report,address)
+-- state.inserts is keyed by provider address and slot name. slots (the menu_slots controller)
+-- parses addresses and checks slot declarations; without it rows are ignored and link pages hidden.
+function M.apply(providers,contributions,parse,state,report,slots)
+    local address=slots and slots.address
     for index=#providers,1,-1 do
         if providers[index].mcContribution then table.remove(providers,index) end
     end
@@ -178,6 +182,23 @@ function M.apply(providers,contributions,parse,state,report,address)
             report('CONTRIBUTION_SKIPPED',contribution.id..': '..tostring(err))
         end
     end
+    -- A link page shows only while its slot exists and has rows; like visible=false, a
+    -- hidden link page keeps any detected placeholder it claimed hidden.
+    for index=#providers,1,-1 do
+        local link=providers[index].mcLinkSlot
+        if link then
+            local target,slot,host
+            if slots then target,slot=slots.address(link.address) end
+            for _,candidate in ipairs(providers) do
+                if target and not candidate.mcLinkSlot and not candidate.noSettings
+                    and slots.provider(candidate.id)==target then host=candidate end
+            end
+            local filled=target and state.inserts[target] and state.inserts[target][slot]
+            if host and filled and #filled>0 and slots:declares(host,slot) then
+                link.host,link.slot=host.id,slot
+            else table.remove(providers,index) end
+        end
+    end
     return providers
 end
 
@@ -195,7 +216,7 @@ function M.install(pages,parse,contributions,report,slots,read)
         -- Contributions must never take the menu down with them.
         local ok,list=pcall(contributions)
         if not ok then once('CONTRIBUTIONS_UNAVAILABLE',tostring(list));list={} end
-        M.apply(providers,list,parse,state,once,slots and slots.address)
+        M.apply(providers,list,parse,state,once,slots)
         if slots then
             slots.inserts,slots.applied=state.inserts,api.applied
             local loadProvider=api.loadProvider

@@ -41,8 +41,6 @@ return {
         local function report(event,detail)
             print('[ModCoreSettings] '..event..' '..tostring(detail or '')..'\n')
         end
-        -- Outermost open: inner wrappers only ever see the host's own unspliced settings.
-        local slots=menuSlots.install(dmm.choices,report,contributions)
         assert(ModRef and type(ModRef.GetSharedVariable)=='function','DMM shared variables unavailable')
         local function read(path)
             local file=assert(io.open(path,'rb'))
@@ -50,6 +48,8 @@ return {
             file:close()
             return assert(content,'unreadable '..path)
         end
+        -- Outermost open: inner wrappers only ever see the host's own unspliced settings.
+        local slots=menuSlots.install(dmm.choices,report,contributions,read)
         -- Wrapped after browser groups so contributed pages exist before ModCore grouping runs.
         menuPages.install(dmm.pages,function(content) return dmm.choices.parse(content) end,
             menuPages.reader(contributions,ModRef,read,report),report,slots,read)

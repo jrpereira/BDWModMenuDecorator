@@ -44,4 +44,43 @@ providers[1].choices[1].mcLinkPage='Empty'
 page.controls:show(1)
 model:set(1,0)
 assert(page.controls:tick()==true and texts[1]=='Empty page is unavailable.')
+-- A slot link opens its host page and sets the navigation pickers that gate the slot.
+do
+    local calls={}
+    local items={
+        {id='MCC_Page',mcNavigation=true,values={0,1,2},visibility={}},
+        {id='Gate',mcNavigation=true,values={0,1},visibility={{target=1,values={[1]=true}}}},
+        {id='Speed',visibility={}},
+        {id='MCT_Template',mcSlotName='visuals',visibility={{target=2,values={[1]=true}}}},
+    }
+    local model={items=items,pending={0,0,3,5},sets={}}
+    function model:set(index,value) self.pending[index]=value;self.sets[#self.sets+1]=items[index].id..'='..value end
+    local providers={{id='Fangdango',mcLinkSlot={host='ModCoreControls',slot='visuals'},choices={}},
+        {id='ModCoreControls',choices=items},{id='Other',mcLinkSlot={address='x:y'},choices={}}}
+    local page={rows={{providerIndex=1},{providerIndex=2},{providerIndex=3}},controlStatus={}}
+    page.controls={model=model,show=function() end,tick=function() return false end,
+        refresh=function() calls[#calls+1]='refresh' end,
+        select=function(_,index,keyboard) calls[#calls+1]='select '..index..tostring(keyboard) end}
+    function page:showDetail(row) calls[#calls+1]='detail '..row end
+    local pages={build=function() return page end}
+    Links.install(pages)
+    local built=pages.build({},providers,nil,{})
+    built:showDetail(1)
+    assert(table.concat(calls,',')=='detail 2,refresh,select 4true',table.concat(calls,','))
+    assert(table.concat(model.sets,',')=='MCC_Page=1,Gate=1','parents first, smallest allowed value')
+    calls,model.sets={},{}
+    built:showDetail(1)
+    assert(#model.sets==0,'already visible: nothing changes')
+    calls={}
+    built:showDetail(3)
+    assert(table.concat(calls,',')=='detail 3','an unresolved link opens normally')
+    calls={}
+    built:showDetail(2)
+    assert(table.concat(calls,',')=='detail 2','ordinary pages are untouched')
+    page.rows={{providerIndex=1}}
+    calls={}
+    built:showDetail(1)
+    assert(table.concat(calls,',')=='detail 1','missing host row falls back to the ordinary open')
+end
+
 print('PASS page links open targets through the browser and refuse dirty pages')
