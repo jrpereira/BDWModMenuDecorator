@@ -27,6 +27,10 @@ local styles={
     [1]={22,'title'},[2]={16,'muted'},[3]={15,'muted'},
     [4]={14,'body'},[5]={12,'muted'},[6]={11,'muted'},
 }
+local headerSeparatorDim={R=0.62,G=0.55,B=0.42,A=0.25}
+local headerSeparatorBright={R=0.62,G=0.55,B=0.42,A=0.9}
+local headerGlowOn={R=0.95,G=0.63,B=0.08,A=0.10}
+local headerGlowOff={R=0,G=0,B=0,A=0}
 function M.parse(content,items)
     local sections,current={},nil
     for line in (content..'\n'):gmatch('([^\n]*)\n') do
@@ -323,23 +327,31 @@ function M.install(choices,controls,pages)
                 end
                 if row.mcHeaderTabs then
                     -- A header picker shows every choice as a tab hanging from the
-                    -- divider, right-aligned, separated by thin vertical bars.
+                    -- divider, right-aligned, separated by thin vertical bars. Only
+                    -- the bars beside the selected tab are drawn at full strength.
                     local tabs=new('HorizontalBox')
-                    row.mcTabs={}
+                    row.mcTabs={};row.mcHeaderSeparators={}
                     local count=#setting.values
-                    local width=math.floor(math.min(140,(572-2*(count+1))/count))
+                    local width=math.floor(math.min(110,(572-(count+1))/count))
                     local function separator()
-                        local bar=new('Border');bar:SetBrushColor({R=0.62,G=0.55,B=0.42,A=0.7})
-                        add(tabs,sized(bar,2,36))
+                        local bar=new('Border');bar:SetBrushColor(headerSeparatorDim)
+                        add(tabs,sized(bar,1,28))
+                        row.mcHeaderSeparators[#row.mcHeaderSeparators+1]=bar
                     end
                     separator()
                     for n,value in ipairs(setting.values) do
                         local button,label=api.button(tree,setting.labels[n]);button.IsFocusable=false
+                        local style=button.WidgetStyle
+                        style.NormalPadding={Left=4,Top=0,Right=4,Bottom=0}
+                        style.PressedPadding={Left=4,Top=0,Right=4,Bottom=0}
+                        api.Theme.font(label,api.theme,12)
                         label:SetJustification(1);label:SetTextOverflowPolicy(1)
                         label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
-                        add(tabs,sized(button,width,36))
+                        local glow=new('Border');glow:SetBrushColor(headerGlowOff)
+                        api.need(glow:SetContent(button),'KEM header tab glow')
+                        add(tabs,sized(glow,width,28))
                         row.mcTabs[#row.mcTabs+1]={widget=button,label=label,value=value,
-                            pressed=false,pointer=false}
+                            pressed=false,pointer=false,glow=glow}
                         separator()
                     end
                     local slot=add(ui.mcHeaderTabs,tabs)
@@ -599,6 +611,20 @@ function M.install(choices,controls,pages)
                         tab.selected,tab.enabled=selected,enabled
                     end
                     if not row.visible or not enabled then tab.pressed,tab.pointer=false,false end
+                end
+                if row.mcHeaderSeparators then
+                    local selected
+                    for n,tab in ipairs(row.mcTabs) do if tab.selected then selected=n;break end end
+                    if row.mcHeaderSelected~=selected then
+                        for n,bar in ipairs(row.mcHeaderSeparators) do
+                            local bright=selected and (n==selected or n==selected+1)
+                            bar:SetBrushColor(bright and headerSeparatorBright or headerSeparatorDim)
+                        end
+                        for n,tab in ipairs(row.mcTabs) do
+                            tab.glow:SetBrushColor(n==selected and headerGlowOn or headerGlowOff)
+                        end
+                        row.mcHeaderSelected=selected
+                    end
                 end
             end
             for index,panel in ipairs(self.panels) do

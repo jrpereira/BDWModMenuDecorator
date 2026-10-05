@@ -118,6 +118,7 @@ local function widget()
     function w:SetRenderOpacity(v) assert(type(v)=='number');self.opacity=v end
     function w:SetFont(v) self.Font=v end
     function w:SetWidthOverride(v) self.WidthOverride=v end
+    function w:SetHeightOverride(v) self.HeightOverride=v end
     function w:SetBrushColor(v) self.BrushColor=v end
     function w:SetRenderTranslation(v) self.RenderTranslation=v end
     return setmetatable(w,{__index=function(_,key)
@@ -480,6 +481,18 @@ headerRow.mcTabs[2].widget.clicked=true
 pickerHeader:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(pickerHeader.model.pending[1]==items[1].values[2] and headerRow.mcTabs[2].selected,
     'Clicking a header tab must select its choice')
+assert(headerRow.mcTabs[1].label.Font.Size==12 and headerTabs.children[2].HeightOverride==28,
+    'Header tabs must use a compact 12-point font and 28-pixel height')
+for n,bar in ipairs(headerRow.mcHeaderSeparators) do
+    local bright=n==2 or n==3
+    assert(#headerRow.mcHeaderSeparators==#items[1].values+1
+        and (bar.BrushColor.A>0.5)==bright,
+        'Only the separators beside the selected header tab may be bright')
+end
+for n,tab in ipairs(headerRow.mcTabs) do
+    assert((tab.glow.BrushColor.A>0)==(n==2) and tab.widget:GetParent()==tab.glow,
+        'Only the selected header tab may glow')
+end
 assert(pickerHeader.panels[1].rows[1].mcHeader
     and pickerHeader.panels[1].rows[1].mcLabel.Slot.Padding.Left==0
     and pickerHeader.panels[1].rows[1].mcLabel.visible==1

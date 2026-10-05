@@ -33,6 +33,8 @@
   `optional [x]` control.
 - Expand key capture to the standard virtual-key keyboard, keypad, punctuation,
   browser, media, and mouse-button set while keeping Escape reserved for cancellation.
+- Show a header picker's choices as tabs hanging from the title divider; the
+  selected tab has bright separators and a faint glow.
 
 ## v0.3.1
 
