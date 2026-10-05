@@ -4,6 +4,18 @@
   "name": "ModCore Settings",
   "description": "Add key-binding pickers, Tap/Hold selectors, presets, and conditional settings through declarative metadata, with Apply, Reset, and persistence support. Compatible with Dawnwalker Mod Menu.",
   "version_source": "Scripts/main.lua",
+  "dependencies": [
+    {
+      "id": "UE4SS",
+      "name": "UE4SS compatible with The Blood of Dawnwalker",
+      "url": "https://github.com/UE4SS-RE/RE-UE4SS"
+    },
+    {
+      "id": "DawnwalkerModMenu",
+      "name": "Dawnwalker Mod Menu",
+      "url": "https://www.nexusmods.com/thebloodofdawnwalker/mods/271"
+    }
+  ],
   "links": {
     "source": "https://github.com/jrpereira/ModCoreSettings",
     "nexus": "https://www.nexusmods.com/thebloodofdawnwalker/mods/590"
