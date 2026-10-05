@@ -193,6 +193,7 @@ function M.install(choices,controls,pages)
             -- A Level 1 row was moved outside the evicted ScrollBox.
             if panel.mcHeader then
                 panel.mcHeader.wrapper:RemoveFromParent()
+                if panel.mcHeader.mcHeaderTabsBox then panel.mcHeader.mcHeaderTabsBox:RemoveFromParent() end
                 panel.mcHeader=nil
             end
             if api.releasePanel then api.releasePanel(panel,provider) end
@@ -318,8 +319,35 @@ function M.install(choices,controls,pages)
                         titleSlot:SetHorizontalAlignment(1);titleSlot:SetVerticalAlignment(2)
                     end
                     row.mcHeader=true;row.mcPlaceholder=placeholder;panel.mcHeader=row
+                    row.mcHeaderTabs=setting.kind=='picker' and ui.mcHeaderTabs~=nil
                 end
-                if setting.mcTabs then
+                if row.mcHeaderTabs then
+                    -- A header picker shows every choice as a tab hanging from the
+                    -- divider, right-aligned, separated by thin vertical bars.
+                    local tabs=new('HorizontalBox')
+                    row.mcTabs={}
+                    local count=#setting.values
+                    local width=math.floor(math.min(140,(572-2*(count+1))/count))
+                    local function separator()
+                        local bar=new('Border');bar:SetBrushColor({R=0.62,G=0.55,B=0.42,A=0.7})
+                        add(tabs,sized(bar,2,36))
+                    end
+                    separator()
+                    for n,value in ipairs(setting.values) do
+                        local button,label=api.button(tree,setting.labels[n]);button.IsFocusable=false
+                        label:SetJustification(1);label:SetTextOverflowPolicy(1)
+                        label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
+                        add(tabs,sized(button,width,36))
+                        row.mcTabs[#row.mcTabs+1]={widget=button,label=label,value=value,
+                            pressed=false,pointer=false}
+                        separator()
+                    end
+                    local slot=add(ui.mcHeaderTabs,tabs)
+                    slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(1)
+                    row.mcHeaderTabsBox=tabs
+                    if row.value then row.value:SetVisibility(1) end
+                    for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
+                elseif setting.mcTabs then
                     -- Keep DMM's original controls alive for navigation, dirty
                     -- notifications and reconstruction. No stock reparenting.
                     local tabs=new('HorizontalBox')
@@ -548,6 +576,7 @@ function M.install(choices,controls,pages)
                     end
                 end
                 if row.mcHeader then row.wrapper:SetVisibility(row.visible and 0 or 1) end
+                if row.mcHeaderTabsBox then row.mcHeaderTabsBox:SetVisibility(row.visible and 0 or 1) end
                 if setting.mcLabelRule then
                     local text=dynamic(setting.mcLabelRule,self.model,setting.label)
                     if text~=row.mcLabelText then api.setText(row.mcLabel,text);row.mcLabelText=text end
@@ -573,7 +602,10 @@ function M.install(choices,controls,pages)
                 end
             end
             for index,panel in ipairs(self.panels) do
-                if index~=self.active and panel.mcHeader then panel.mcHeader.wrapper:SetVisibility(1) end
+                if index~=self.active and panel.mcHeader then
+                    panel.mcHeader.wrapper:SetVisibility(1)
+                    if panel.mcHeader.mcHeaderTabsBox then panel.mcHeader.mcHeaderTabsBox:SetVisibility(1) end
+                end
             end
             for _,heading in ipairs(self.panels[self.active].headings) do
                 local setting=self.model.items[heading.first]
@@ -814,10 +846,19 @@ function M.install(choices,controls,pages)
             assert(#children>=2 and children[1].widget:GetFullName()==title:GetFullName(),
                 'KEM page header layout')
             parent:ClearChildren()
+            -- A header picker's choices hang as tabs from the divider under the
+            -- title. The strip stays empty, and takes no height, until one does.
+            local strip=api.construct('/Script/UMG.Overlay',tree)
+            local stripBox=api.construct('/Script/UMG.SizeBox',tree)
+            stripBox:SetWidthOverride(572)
+            api.need(stripBox:SetContent(strip),'KEM header tabs strip')
             for index,child in ipairs(children) do
-                if index==1 then child.padding.Bottom=child.padding.Bottom+20 end
                 api.need(parent:AddChild(index==1 and host or child.widget),'KEM page header child')
                     :SetPadding(child.padding)
+                if index==2 then
+                    api.need(parent:AddChild(stripBox),'KEM header tabs slot')
+                        :SetPadding({Left=0,Top=0,Right=0,Bottom=0})
+                end
             end
             api.need(host:AddChild(title),'KEM page title')
             title:SetVisibility(4)
@@ -882,6 +923,7 @@ function M.install(choices,controls,pages)
             end
             page.controls.mcHeaderHost=host
             page.controls.mcHeaderTitle=title
+            page.controls.mcHeaderTabs=strip
             return page
         end
     end

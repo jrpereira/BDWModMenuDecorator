@@ -242,6 +242,10 @@ assert(page.mcTestControlArea.children[1]==page.controls.mcHeaderHost
     and page.controls.mcHeaderHost.children[1]==page.modTitle
     and page.modTitle.visible==4,
     'Mod title must share the first row with the picker above the divider')
+assert(page.controls.mcHeaderHost.Slot.Padding.Bottom==0,'The title row must not add space above the divider')
+assert(page.mcTestControlArea.children[3]:GetContent()==page.controls.mcHeaderTabs
+    and #page.controls.mcHeaderTabs.children==0,
+    'An empty header tab strip must sit directly beneath the divider')
 page:refresh(false)
 assert(page.filterLabel.text=='All Mods' and page.filterLabel.Font.Size==22 and page.filterLabel.color=='title',
     'Filter text changes must retain the mod-title style')
@@ -462,7 +466,20 @@ assert(not templatePage.panels[1].rows[1].mcHeader
 local pickerHeader=controls.build(widget(),{{id='ModCoreControls',choices=items}},api)
 pickerHeader.mcHeaderHost=page.controls.mcHeaderHost
 pickerHeader.mcHeaderTitle=page.modTitle
+pickerHeader.mcHeaderTabs=page.controls.mcHeaderTabs
 pickerHeader:show(1)
+local headerRow=pickerHeader.panels[1].rows[1]
+local headerTabs=headerRow.mcHeaderTabsBox
+assert(headerTabs and headerTabs:GetParent()==page.controls.mcHeaderTabs
+    and headerTabs.Slot.HorizontalAlignment==3 and headerTabs.Slot.VerticalAlignment==1,
+    'Header picker choices must hang right-aligned from the divider')
+assert(#headerRow.mcTabs==#items[1].values and #headerTabs.children==2*#items[1].values+1
+    and headerRow.value.visible==1 and headerTabs.visible==0,
+    'Every header choice must be a tab between separators, replacing the value text')
+headerRow.mcTabs[2].widget.clicked=true
+pickerHeader:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(pickerHeader.model.pending[1]==items[1].values[2] and headerRow.mcTabs[2].selected,
+    'Clicking a header tab must select its choice')
 assert(pickerHeader.panels[1].rows[1].mcHeader
     and pickerHeader.panels[1].rows[1].mcLabel.Slot.Padding.Left==0
     and pickerHeader.panels[1].rows[1].mcLabel.visible==1
@@ -473,6 +490,8 @@ assert(pickerHeader.panels[1].rows[1].mcHeader
 pickerHeader.mcTestReleasePanel(pickerHeader.panels[1])
 assert(not pickerHeader.panels[1].mcHeader and not pickerHeader.panels[1].rows[1].wrapper:GetParent(),
     'Eviction must detach the header that lives outside the panel scroll')
+assert(not headerTabs:GetParent() and #page.controls.mcHeaderTabs.children==0,
+    'Eviction must detach the header tabs from the shared strip')
 browserProviders.lazy=true
 local recycled=pages.build(widget(),browserProviders,nil,api)
 local recycledLabel=recycled.mounted[1].widget:GetContent()
