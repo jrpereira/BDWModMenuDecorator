@@ -35,6 +35,9 @@
   browser, media, and mouse-button set while keeping Escape reserved for cancellation.
 - Show a header picker's choices as tabs hanging from the title divider; the
   selected tab has bright separators and a faint glow.
+- Add page hooks: a contributed page may name a Lua file that generates its
+  manifest on every menu build and optionally owns its storage (`load` and
+  `apply`), so no mod needs its own DMM extension (descriptor contract 3).
 
 ## v0.3.1
 

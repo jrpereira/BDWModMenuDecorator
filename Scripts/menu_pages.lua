@@ -1,5 +1,6 @@
 -- Turn published menu contributions into DMM pages before DMM builds its rows.
--- Contributors never run code here; they publish data through menu_contributions.lua.
+-- Contributors publish data through menu_contributions.lua. The only contributor code run
+-- here is a page's hooks file, through the hooked(page) function the extension supplies.
 local M={}
 
 local function before(a,b)
@@ -53,19 +54,25 @@ function M.reader(Contributions,shared,read,report)
     end
 end
 
-local function generated(contribution,page,parse)
+local function generated(contribution,page,parse,hooked)
     local choices={}
-    if page.manifest then choices=parse(page.manifest) end
+    local manifest,hooks,context=page.manifest,nil,nil
+    if page.hooks then
+        assert(hooked,'page hooks unavailable')
+        hooks,manifest,context=hooked(page)
+    end
+    if manifest then choices=parse(manifest) end
     local provider={id=page.id,name=page.name,author=page.author or contribution.id,
         version=page.version or '',description=page.description or '',
         authorURL='',modURL='',logoFile='',logoAsset='',testOnly=false,
         choices=choices,settingsCount=#choices,choicesLoaded=true,deferred=false,
         path=page.configDirectory and (page.configDirectory:gsub('[/\\]+$','')..'/mod_settings.ini') or nil,
-        mcContribution=contribution.id,mcBrowserGroup=page.group,mcManifest=page.manifest}
+        mcContribution=contribution.id,mcBrowserGroup=page.group,mcManifest=manifest,
+        mcHooks=hooks,mcHookContext=context}
     if page.link then
         -- Opens another page; it is selectable although it has no settings of its own.
         provider.mcLinkSlot={address=page.link}
-    elseif #choices==0 then provider.noSettings,provider.mcBrowserHeading=true,page.manifest==nil end
+    elseif #choices==0 then provider.noSettings,provider.mcBrowserHeading=true,manifest==nil end
     return provider
 end
 
@@ -99,7 +106,8 @@ end
 -- state.inserts is keyed by provider address and slot name. slots (the menu_slots controller)
 -- parses addresses and checks slot declarations; without it rows are ignored and link pages hidden.
 -- A hidden page whose rows have no available slot is shown instead, so its settings stay reachable.
-function M.apply(providers,contributions,parse,state,report,slots)
+-- hooked(page) (optional) returns a hooks page's hooks, manifest text and context.
+function M.apply(providers,contributions,parse,state,report,slots,hooked)
     local address=slots and slots.address
     for index=#providers,1,-1 do
         if providers[index].mcContribution then table.remove(providers,index) end
@@ -124,7 +132,7 @@ function M.apply(providers,contributions,parse,state,report,slots)
                 assert(not ids[page.id],'page id '..page.id..' is already in the menu')
                 local parent=page.under and built[page.under]
                 if shown[page.id] and (not page.under or parent) then
-                    built[page.id]={provider=generated(contribution,page,parse),page=page}
+                    built[page.id]={provider=generated(contribution,page,parse,hooked),page=page}
                 end
             end
             -- Validate all attachments before changing the list; a contributor is all or nothing.
@@ -174,7 +182,7 @@ function M.apply(providers,contributions,parse,state,report,slots)
                 local source
                 for _,page in ipairs(contribution.pages) do
                     if page.id==row.page then
-                        source=built[page.id] and built[page.id].provider or generated(contribution,page,parse)
+                        source=built[page.id] and built[page.id].provider or generated(contribution,page,parse,hooked)
                     end
                 end
                 local target,slot=address(row.slot)
@@ -216,7 +224,8 @@ function M.apply(providers,contributions,parse,state,report,slots)
 end
 
 -- slots (optional): the menu_slots controller; read loads a disk manifest for splicing.
-function M.install(pages,parse,contributions,report,slots,read)
+-- hooked (optional): see M.apply.
+function M.install(pages,parse,contributions,report,slots,read,hooked)
     assert(type(pages)=='table' and type(pages.build)=='function','DMM pages API unavailable')
     if pages.mcMenuPagesVersion then return false end
     local state,build,reported={}, pages.build, {}
@@ -229,7 +238,7 @@ function M.install(pages,parse,contributions,report,slots,read)
         -- Contributions must never take the menu down with them.
         local ok,list=pcall(contributions)
         if not ok then once('CONTRIBUTIONS_UNAVAILABLE',tostring(list));list={} end
-        M.apply(providers,list,parse,state,once,slots)
+        M.apply(providers,list,parse,state,once,slots,hooked)
         if slots then
             slots:outermost()
             slots.inserts,slots.applied=state.inserts,api.applied

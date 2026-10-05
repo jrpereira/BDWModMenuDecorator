@@ -428,6 +428,36 @@ placeholder it claims. Link pages cannot have children.
 Rows and links need descriptor contract 2, so a ModCoreSettings build that predates
 slots skips the whole contribution, pages included.
 
+### Page hooks
+
+A page whose settings change at runtime, or that owns its own storage, names a
+hooks file instead of a manifest. ModCoreSettings loads it in its own menu
+state, once per session, and modules beside it can be `require`d:
+
+```lua
+{id='ExampleMod',name='Example',attach='ExampleMod',
+    hooks='<absolute path>/Scripts/mcs_page.lua',configDirectory='<absolute folder>'}
+```
+
+```lua
+-- mcs_page.lua
+return {contract=1,
+    manifest=function(context) return settingsManifest end,           -- every menu build
+    load=function(context) return {[settingId]=value} end,             -- optional
+    apply=function(context,values,changes) return saved,warning end,   -- with load
+}
+```
+
+`context` is `{page=<page id>,directory=<configDirectory>}`. With `load` and
+`apply`, ModCoreSettings never reads or writes the page's config file: `load`
+supplies the values (missing ids keep their defaults), and Apply passes every
+value by id and the edited ones as `{old=,new=}`. `apply` returns the values it
+saved, which become committed and are published in the Apply notification, plus
+an optional warning. An error from `apply` rejects the Apply and keeps the page
+dirty; an error from `load` shows the page error. An error loading the file or
+from `manifest` skips the contributor like any other failure. Hooks pages need
+descriptor contract 3, which older ModCoreSettings builds skip.
+
 ### Page links
 
 A navigation picker with `mcLinkPage=<page id>` opens that page instead of saving

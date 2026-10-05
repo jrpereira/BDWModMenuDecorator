@@ -28,6 +28,7 @@ return {
         local menuPages=module('menu_pages')
         local pageLinks=module('page_links')
         local menuSlots=module('menu_slots')
+        local pageHooks=module('page_hooks')
         assert(type(mapped.install)=='function','mapped preset installer unavailable')
         assert(type(presentation.install)=='function','presentation installer unavailable')
         assert(type(config.install)=='function','configuration installer unavailable')
@@ -48,11 +49,19 @@ return {
             file:close()
             return assert(content,'unreadable '..path)
         end
+        -- Hooks storage sits inside the slot model, which must stay outermost.
+        pageHooks.install(dmm.choices)
+        local loadHooks=pageHooks.loader()
+        local function hooked(page)
+            local hooks=loadHooks(page.hooks)
+            local context=pageHooks.context(page)
+            return hooks,pageHooks.manifest(hooks,context),context
+        end
         -- Outermost open: inner wrappers only ever see the host's own unspliced settings.
         local slots=menuSlots.install(dmm.choices,report,contributions,read)
         -- Wrapped after browser groups so contributed pages exist before ModCore grouping runs.
         menuPages.install(dmm.pages,function(content) return dmm.choices.parse(content) end,
-            menuPages.reader(contributions,ModRef,read,report),report,slots,read)
+            menuPages.reader(contributions,ModRef,read,report),report,slots,read,hooked)
         pageLinks.install(dmm.pages)
         local publisher=lifecycle.publisher(report)
         for _,name in ipairs({'providerPrepared','providerRefreshed','hostClosing'}) do

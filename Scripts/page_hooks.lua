@@ -1,0 +1,120 @@
+-- Page hooks: a contributed page may name a Lua file that ModCoreSettings loads in DMM's
+-- state. The file generates the page's manifest on each menu build and may own the page's
+-- storage. It sees only setting ids and values, never DMM's providers or models.
+--
+-- A hooks file returns:
+--   {contract=1,
+--    manifest=function(context) return '<settings manifest text>' end,
+--    load=function(context) return {[settingId]=value,...} end,                 -- optional
+--    apply=function(context,values,changes) return savedValues,warning end}    -- with load
+-- context={page=<page id>,directory=<configDirectory>}. values holds every stored setting
+-- by id (mcNavigation and mcReadOnly rows are left out);
+-- changes holds {old=,new=} for edited settings. apply raises to reject the Apply. The
+-- values it returns become the committed values; ids it omits keep the values it was given.
+local M={contract=1}
+
+local function directoryOf(path) return assert(path:match('^(.*)[/\\][^/\\]+$'),'invalid hooks path') end
+
+-- Returns load(path) -> hooks table. Each path is loaded once per session; a failure is
+-- remembered too, so a broken file is reported once and not re-run on every build.
+function M.loader(loadfile)
+    loadfile=loadfile or _G.loadfile
+    local cache,paths={},{}
+    return function(path)
+        local entry=cache[path]
+        if not entry then
+            local ok,result=pcall(function()
+                local directory=directoryOf(path)
+                -- Hooks files require modules beside them, as they would in their own mod.
+                if not paths[directory] then
+                    package.path=directory..'/?.lua;'..package.path
+                    paths[directory]=true
+                end
+                local chunk=assert(loadfile(path))
+                local hooks=chunk()
+                assert(type(hooks)=='table','hooks file must return a table')
+                assert(hooks.contract==M.contract,'unsupported hooks contract '..tostring(hooks.contract))
+                assert(type(hooks.manifest)=='function','hooks need manifest()')
+                assert((hooks.load==nil)==(hooks.apply==nil),'hooks need both load() and apply(), or neither')
+                assert(hooks.load==nil or (type(hooks.load)=='function' and type(hooks.apply)=='function'),
+                    'hooks load() and apply() must be functions')
+                return hooks
+            end)
+            entry={ok=ok,result=result};cache[path]=entry
+        end
+        if not entry.ok then error(entry.result,0) end
+        return entry.result
+    end
+end
+
+function M.context(page)
+    return {page=page.id,directory=page.configDirectory}
+end
+
+-- Runs a page's manifest hook. Errors propagate so the contributor is skipped.
+function M.manifest(hooks,context)
+    local text=hooks.manifest({page=context.page,directory=context.directory})
+    assert(type(text)=='string' and not text:find('%z'),'manifest() must return text')
+    return text
+end
+
+-- Wraps choices.open so a page with storage hooks keeps its values out of DMM's config IO.
+-- DMM still provides editing, navigation and the Apply flow.
+function M.install(choices)
+    if choices.mcHooksVersion then return false end
+    local open=choices.open
+    choices.open=function(provider)
+        local hooks=provider.mcHooks
+        if not hooks or not hooks.apply then return open(provider) end
+        local context=provider.mcHookContext
+        local copy={}
+        for key,value in pairs(provider) do copy[key]=value end
+        -- testOnly keeps DMM's model in session memory; the hooks own the file.
+        copy.testOnly=true
+        local model=open(copy)
+        model.provider=provider
+        if not model.error then
+            local ok,why=pcall(function()
+                local values=hooks.load({page=context.page,directory=context.directory})
+                assert(type(values)=='table','load() must return a table')
+                for i,item in ipairs(model.items) do
+                    local value=values[item.id]
+                    if value~=nil then model.pending[i],model.committed[i]=value,value end
+                end
+            end)
+            if not ok then model.error=tostring(why) end
+        end
+        function model:apply()
+            if self.error then return false,self.error end
+            -- Navigation and read-only rows are never stored, as in navigation.lua.
+            local function stored(item) return not item.mcNavigation and not item.mcReadOnly end
+            local values,changes={},{}
+            for i,item in ipairs(self.items) do
+                if stored(item) then
+                    values[item.id]=self.pending[i]
+                    if self.pending[i]~=self.committed[i] then
+                        changes[item.id]={old=self.committed[i],new=self.pending[i]}
+                    end
+                end
+            end
+            local ok,saved,warning=pcall(hooks.apply,{page=context.page,directory=context.directory},values,changes)
+            if not ok then return false,tostring(saved) end
+            if type(saved)~='table' then return false,'apply() must return the saved values' end
+            local event={values={},changes=changes}
+            for i,item in ipairs(self.items) do
+                if stored(item) then
+                    local value=saved[item.id]
+                    if value~=nil then self.pending[i]=value end
+                    event.values[item.id]=self.pending[i]
+                end
+                self.committed[i]=self.pending[i]
+            end
+            return true,warning~=nil and tostring(warning) or nil,event
+        end
+        return model
+    end
+    choices.mcHooksVersion=1
+    return true
+end
+
+return M

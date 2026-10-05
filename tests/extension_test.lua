@@ -20,6 +20,12 @@ loadfile=function(path)
                 return 'slots'
             end}
         end
+        if name=='page_hooks' then
+            return {loader=function() return function() return 'hooks' end end,
+                context=function(page) return {page=page.id} end,
+                manifest=function(_,context) return 'manifest for '..context.page end,
+                install=function(...) installs[#installs+1]={name=name,args={...}} end}
+        end
         if name=='dmm_lifecycle' then
             return {publisher=function() return {publish=function(_,event) installs[#installs+1]={name='publish',event=event} end} end}
         end
@@ -35,7 +41,7 @@ local callbacks={}
 local events={on=function(_,name,callback) callbacks[name]=callback end}
 extension.install({version=1,choices=choices,controls=controls,pages=pages,events=events})
 local order={'navigation','mapped_presets','presentation','browser_groups','init_config','dmm_lifecycle',
- 'menu_contributions','menu_pages','page_links','menu_slots'}
+ 'menu_contributions','menu_pages','page_links','menu_slots','page_hooks'}
 assert(#loaded==#order)
 for n,name in ipairs(order) do assert(loaded[n]:match(name..'%.lua$'),'load '..n) end
 assert(installs[1].args[1]==choices)
@@ -43,12 +49,17 @@ assert(installs[2].args[1]==choices and installs[2].args[2]==controls)
 assert(installs[3].args[1]==choices and installs[3].args[2]==controls and installs[3].args[3]==pages)
 assert(installs[4].args[1]==pages)
 assert(installs[5].args[1]==choices)
-assert(installs[6].name=='menu_slots' and installs[6].args[1]==choices and type(installs[6].args[3])=='table',
+assert(installs[6].name=='page_hooks' and installs[6].args[1]==choices,
+ 'hooks storage wraps open before the slot model')
+assert(installs[7].name=='menu_slots' and installs[7].args[1]==choices and type(installs[7].args[3])=='table',
  'slot open wraps outermost so inner wrappers see the host page unspliced')
-assert(installs[7].name=='menu_pages' and installs[7].args[1]==pages and installs[7].args[3]=='reader',
+assert(installs[8].name=='menu_pages' and installs[8].args[1]==pages and installs[8].args[3]=='reader',
  'menu pages wrap after browser groups so contributions exist before grouping')
-assert(installs[7].args[5]=='slots' and type(installs[7].args[6])=='function','menu pages drive slot splicing')
-assert(installs[8].name=='page_links' and installs[8].args[1]==pages)
+assert(installs[8].args[5]=='slots' and type(installs[8].args[6])=='function','menu pages drive slot splicing')
+local hooks,manifest,context=installs[8].args[7]({id='MCC',hooks='/m/hooks.lua'})
+assert(hooks=='hooks' and manifest=='manifest for MCC' and context.page=='MCC',
+ 'menu pages receive a hooks resolver for hooks pages')
+assert(installs[9].name=='page_links' and installs[9].args[1]==pages)
 for _,name in ipairs({'providerPrepared','providerRefreshed','hostClosing'}) do
  assert(type(callbacks[name])=='function');callbacks[name]({});assert(installs[#installs].event==name)
 end
