@@ -4,6 +4,24 @@ ModCore Settings (MCS) adds keybind editors, navigation, presets and contributed
 pages to Dawnwalker Mod Menu (DMM). Your mod defines settings; DMM manages pending
 edits and Apply; your mod applies the saved values to gameplay.
 
+## Features and benefits
+
+- **Declare your menu:** add settings through metadata or generated pages; MCS
+  handles their presentation inside DMM.
+- **Edit keyboard and mouse bindings:** capture keys, choose Tap/Hold triggers,
+  clear optional bindings and display inherited game controls. Your mod supplies
+  text storage and input behavior.
+- **Organize larger menus:** use tabs, cycling pickers, conditional rows, shared
+  headings and navigation that does not change saved settings.
+- **Offer coordinated presets:** one choice updates several settings in DMM's
+  pending model; individual edits can return the selection to Custom.
+- **Share menu space:** contribute pages or insert settings into another mod's
+  declared slot while retaining ownership of storage and Apply.
+- **React to saved changes:** receive numeric Apply notifications after a
+  successful save, without watching or polling configuration files.
+- **Preserve configuration:** initialize missing numeric defaults and migrate
+  declared legacy values while keeping existing choices and unrelated content.
+
 ## Choose the right module
 
 | Module | Responsibility |
@@ -43,6 +61,7 @@ Logs appear in `UE4SS.log`. The default level is WARN. For more detail, put
 
 ## Documentation
 
+- [Nexus description](https://github.com/jrpereira/ModCoreSettings/blob/main/docs/NEXUS.md): condensed, paste-ready module description in BBCode.
 - [Developer guide](DEVELOPERS.md): first setting, Apply and keybinds.
 - [Integration reference](REFERENCE.md): metadata, pages, slots and migrations.
 - [Build guide](BUILD.md): offline tests and in-game checks.
