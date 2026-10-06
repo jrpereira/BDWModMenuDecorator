@@ -113,6 +113,7 @@ local function widget()
     function w:SetMinDesiredHeight(v) self.MinDesiredHeight=v end
     function w:SetAutoWrapText(v) self.AutoWrapText=v end
     function w:SetBrushColor(v) self.BrushColor=v end
+    function w:SetColorAndOpacity(v) self.colorAndOpacity=v;self.color=nil end
     function w:SetRenderTranslation(v) self.RenderTranslation=v end
     return setmetatable(w,{__index=function(_,key)
         if key:match('^Set') or key=='ForceVolatile' or key=='ScrollToStart' or key=='ScrollWidgetIntoView' then return function() end end
@@ -146,7 +147,8 @@ local pages={build=function(tree,providers,status,a)
     local parent=widget()
     local title=a.caption(tree,'Mod Settings');parent:AddChild(title)
     local divider=widget();parent:AddChild(divider)
-    parent:AddChild(widget())
+    local status=a.caption(tree,'');parent:AddChild(status)
+    status.Slot:SetPadding({Left=0,Top=4,Right=0,Bottom=0})
     -- UE4SS may return another Lua wrapper for the same UMG widget.
     local titleWrapper={Slot=title.Slot,GetFullName=function() return title:GetFullName() end}
     local getChildAt,addChild=parent.GetChildAt,parent.AddChild
@@ -168,7 +170,7 @@ local pages={build=function(tree,providers,status,a)
         allRows[#allRows+1]={widget=button,wrapper=wrapper,providerIndex=index}
     end
     local page={filterButton=filterButton,filterLabel=filterLabel,browserList=browserList,allRows=allRows,
-        controls={},modTitle=title,mcTestControlArea=parent,mcTestDivider=divider}
+        controls={},modTitle=title,controlStatus=status,mcTestControlArea=parent,mcTestDivider=divider,mcTestApi=a}
     function page:refresh(compatibleOnly)
         a.setText(self.filterLabel,compatibleOnly and 'Compatible Mods' or 'All Mods')
     end
@@ -182,6 +184,7 @@ local controls={build=function(tree,providers,a)
     function ui.model:set(i,v) self.pending[i]=v end
     function ui.model:change(i) self.pending[i]=1-self.pending[i] end
     function ui:prepare()
+        if self.mcTestFail then local message=self.mcTestFail;self.mcTestFail=nil;error(message,0) end
         local p=self.panels[1];if p.built then return end
         for i,s in ipairs(items) do
             local heading=a.caption(tree,s.group);p.scroll:AddChild(heading)
@@ -198,7 +201,10 @@ local controls={build=function(tree,providers,a)
             local bg=widget();local overlay=widget();overlay:AddChild(bg);overlay:AddChild(box)
             local value=a.caption(tree,'');overlay:AddChild(value)
             local parts={}
-            for n=1,3 do local b2=a.button(tree,'');local size=widget();size:SetContent(b2);overlay:AddChild(size);parts[n]={widget=b2} end
+            -- Like DMM, only a picker adds its left, value and right buttons after the label.
+            if s.kind=='picker' then
+                for n=1,3 do local b2=a.button(tree,n==1 and '<' or n==3 and '>' or '');local size=widget();size:SetContent(b2);overlay:AddChild(size);parts[n]={widget=b2} end
+            end
             local wrapper=widget();wrapper:SetContent(overlay);p.scroll:AddChild(wrapper)
             p.rows[i]={widget=b,value=value,background=bg,parts=parts,wrapper=wrapper,nav=widget(),visible=true}
         end
@@ -236,8 +242,31 @@ assert(page.mcTestControlArea.children[1]==page.controls.mcHeaderHost
     'Mod title must share the first row with the picker above the divider')
 assert(page.controls.mcHeaderHost.Slot.Padding.Bottom==0,'The title row must not add space above the divider')
 assert(page.mcTestControlArea.children[3]:GetContent()==page.controls.mcHeaderTabs
-    and #page.controls.mcHeaderTabs.children==0,
-    'An empty header tab strip must sit directly beneath the divider')
+    and #page.mcTestControlArea.children==3,
+    'The header tab strip must sit directly beneath the divider')
+local statusBox=page.controls.mcHeaderStatus.box
+assert(#page.controls.mcHeaderTabs.children==1 and page.controls.mcHeaderTabs.children[1]==statusBox
+    and statusBox:GetContent()==page.controlStatus and statusBox.WidthOverride==572
+    and statusBox.Slot.HorizontalAlignment==1 and statusBox.Slot.VerticalAlignment==1
+    and statusBox.Slot.Padding.Top==4,
+    'The page status must start the header row beneath the divider, keeping its padding')
+-- Unapplied changes show as a * after the page title, not as status text; every other
+-- status stays text, and the * follows the model's dirty state.
+local dirty,failed=true,nil
+page.controls.model={dirty=function() return dirty end}
+page.mcTestApi.setText(page.modTitle,'Controls')
+page.mcTestApi.setText(page.controlStatus,'Unapplied changes')
+assert(page.modTitle.text=='Controls *' and page.controlStatus.text=='','dirty: the title gains a * and the status is empty')
+page.mcTestApi.setText(page.controlStatus,'Apply failed: disk full')
+assert(page.controlStatus.text=='Apply failed: disk full' and page.modTitle.text=='Controls *',
+    'a failed Apply still reads as text, and the page is still dirty')
+dirty=false
+page.mcTestApi.setText(page.controlStatus,'')
+assert(page.modTitle.text=='Controls' and page.controlStatus.text=='','Apply or Restore clears the *')
+page.controls.model={dirty=function() return true end,error='config unreadable'}
+page.mcTestApi.setText(page.controlStatus,'config unreadable')
+assert(page.controlStatus.text=='config unreadable' and page.modTitle.text=='Controls','an error reads as text, without a *')
+page.controls.model=nil
 page:refresh(false)
 assert(page.filterLabel.text=='All Mods' and page.filterLabel.Font.Size==22 and page.filterLabel.color=='title',
     'Filter text changes must retain the mod-title style')
@@ -382,6 +411,7 @@ local pickerHeader=controls.build(widget(),{{id='ModCoreControls',choices=items}
 pickerHeader.mcHeaderHost=page.controls.mcHeaderHost
 pickerHeader.mcHeaderTitle=page.modTitle
 pickerHeader.mcHeaderTabs=page.controls.mcHeaderTabs
+pickerHeader.mcHeaderStatus=page.controls.mcHeaderStatus
 pickerHeader:show(1)
 local headerRow=pickerHeader.panels[1].rows[1]
 local headerTabs=headerRow.mcHeaderTabsBox
@@ -391,6 +421,15 @@ assert(headerTabs and headerTabs:GetParent()==page.controls.mcHeaderTabs
 assert(#headerRow.mcTabs==#items[1].values and #headerTabs.children==2*#items[1].values+1
     and headerRow.value.visible==1 and headerTabs.visible==0,
     'Every header choice must be a tab between separators, replacing the value text')
+local tabsWidth=headerRow.mcHeaderTabsWidth
+assert(tabsWidth==2*110+3 and statusBox.WidthOverride==572-tabsWidth-12 and statusBox.Slot.Padding.Top==4,
+    'The page status must stay beneath the divider, left of the header tabs')
+headerRow.mcHeaderTabsWidth=8*70+9;pickerHeader:refresh()
+assert(statusBox.WidthOverride==572 and statusBox.Slot.Padding.Top==4+28,
+    'A page status without room beside the tabs must drop below them at full width')
+headerRow.mcHeaderTabsWidth=tabsWidth;pickerHeader:refresh()
+assert(statusBox.WidthOverride==572-tabsWidth-12 and statusBox.Slot.Padding.Top==4,
+    'The page status must return beside the tabs when they fit again')
 headerRow.mcTabs[2].widget.clicked=true
 pickerHeader:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(pickerHeader.model.pending[1]==items[1].values[2] and headerRow.mcTabs[2].selected,
@@ -419,6 +458,7 @@ M.parse('[Setting.Primary]\nId=Primary\nmcReadOnly=1\nmcReferenceLabel=Slot 1\nm
 local readOnly=controls.build(widget(),{{choices=items}},api)
 readOnly:show(1)
 local referenceTabs=readOnly.panels[1].rows[1].mcTabs
+assert(not readOnly.panels[1].rows[1].mcStar,'A read-only row is never dirty and gets no star')
 assert(#referenceTabs==1 and referenceTabs[1].enabled==false and referenceTabs[1].label.text=='Slot 1',
     'Reference mode is a disabled Slot label')
 referenceTabs[1].widget.clicked=true
@@ -467,6 +507,43 @@ assert(editorRow.widget:GetContent().Slot.Padding.Left==36 and editorRow.mcLabel
     'Editor rows indent once, like toggle rows')
 items[4]=nil
 
+-- Row label buttons follow DMM's build order: a picker's arrow and value buttons are
+-- never taken for the next row's label, even when that label matches an arrow.
+do
+    local saved={}
+    for i,item in ipairs(items) do saved[i]=item end
+    for i=#items,1,-1 do items[i]=nil end
+    items[1]={id='Order1',kind='picker',group='Order',label='Mode',values={0,1},labels={'A','B'}}
+    items[2]={id='Order2',kind='toggle',group='Order',label='>',values={0,1},labels={'Off','On'}}
+    M.parse('',items)
+    local ordered=controls.build(widget(),{{choices=items}},api)
+    ordered:show(1)
+    local picker,toggle=ordered.panels[1].rows[1],ordered.panels[1].rows[2]
+    assert(picker.widget.WidgetStyle.NormalPadding.Left==0 and toggle.widget.WidgetStyle.NormalPadding.Left==0
+        and picker.parts[3].widget.WidgetStyle.NormalPadding.Left==16,
+        'the label after a picker is its own row, not the picker\'s right arrow')
+    -- A navigation picker separating colliding keybinds shows its choice and arrows in red,
+    -- and returns to DMM's colors when the collision clears.
+    ordered.model.mcConflictPickers={[1]=true};ordered:refresh()
+    local arrowLeft,arrowRight=picker.parts[1].widget:GetContent(),picker.parts[3].widget:GetContent()
+    assert(picker.value.colorAndOpacity.SpecifiedColor.R>0.8 and arrowLeft.colorAndOpacity.SpecifiedColor.R>0.8
+        and arrowRight.colorAndOpacity.SpecifiedColor.R>0.8 and not toggle.value.colorAndOpacity,
+        'the separating picker turns red, text and arrows')
+    ordered.model.mcConflictPickers={};ordered:refresh()
+    assert(picker.value.color=='body' and arrowLeft.color=='body' and arrowRight.color=='body',
+        'clearing restores the body color')
+    -- A failed DMM build leaves no construction state behind; the next build styles normally.
+    local failing=controls.build(widget(),{{choices=items}},api)
+    failing.mcTestFail='dmm build failed'
+    local ok,err=pcall(failing.show,failing,1)
+    assert(not ok and err=='dmm build failed','DMM build errors propagate unchanged')
+    failing:show(1)
+    assert(failing.panels[1].rows[2].widget.WidgetStyle.NormalPadding.Left==0 and failing.panels[1].rows[1].mcStar,
+        'after a failed build the page builds and decorates normally')
+    for i=#items,1,-1 do items[i]=nil end
+    for i,item in ipairs(saved) do items[i]=item end
+end
+
 -- An mcCategory row stands in for its hidden group heading: it takes the heading's look
 -- and the rest of its group indents beneath it while it shows.
 do
@@ -491,6 +568,19 @@ do
         assert(row.mcLabel.Font.Size==14 and row.mcLabel.color=='body'
             and row.widget:GetContent().Slot.Padding.Left==36,'rows indent beneath the category row')
     end
+    -- The dirty star follows the label text in a box that replaces the label, so an
+    -- unindented label never sits under it.
+    local line=heading.mcLabel:GetParent()
+    assert(line==heading.widget:GetContent() and line.children[1]==heading.mcLabel
+        and line.children[2]==heading.mcStar and heading.mcStar.text=='*' and heading.mcStar.visible==2
+        and heading.mcLabel.Slot.Padding.Left==0 and heading.mcLabel.Slot.Size.SizeRule==0
+        and heading.mcStar.Slot.Padding.Left==4 and heading.mcStar.Slot.Padding.Right==8
+        and heading.mcStar.Font.Size==16,'the star follows the category row label, in its font')
+    local toggleRow=built.panels[1].rows[2]
+    local toggleLine=toggleRow.mcLabel:GetParent()
+    assert(toggleLine.children[2]==toggleRow.mcStar and toggleRow.mcStar.Font.Size==14
+        and toggleRow.widget:GetContent().children[1]:GetContent()==toggleLine,
+        'a toggle row star follows its label inside the label box')
     function built.model:visibility() return {false,true,true} end
     built:refresh()
     local row=built.panels[1].rows[2]

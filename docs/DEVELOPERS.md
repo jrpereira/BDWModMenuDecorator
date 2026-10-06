@@ -85,6 +85,16 @@ The stored value is `none` or `<FKey>|<trigger>`: `K|Tap`, `LeftAlt|Hold`, or
 clear button; `DefaultControl=IA_Name` displays the player's native keys while
 unbound. Your input code implements any inheritance and Tap/Hold timing.
 
+`mcConflictScope=<name>` (letters, digits and `_`, at most 64) groups keybind rows
+that must not share a binding. On every edit, rows on the page with the same scope,
+the same key (ignoring case) and the same trigger get a dim red key background;
+`none` never collides, and one key on Tap and on Hold does not collide. When the
+two rows sit on different choices of a navigation picker that both depend on, that
+picker's shown choice and arrows turn red too: the map picker for rows in one
+section, the section picker for rows in different sections. Plain arrow pickers
+are highlighted; tab and cycle pickers are not. Highlighting is a hint: rejecting
+the collision on Apply stays with your storage hook.
+
 Capture changes DMM's pending value. Apply calls your storage hook with all
 stored values and changed IDs; return the saved values only after persistence
 succeeds. Raise an error to reject the Apply. Navigation/read-only rows are
@@ -102,7 +112,7 @@ gamepad capture are unsupported.
 | Need | Metadata | Example |
 | --- | --- | --- |
 | Navigation picker | `mcNavigation=1` | Switch visible groups without saving a choice |
-| Tab choices | `mcType=tab` | Two to eight picker choices |
+| Tab choices | `mcType=tab` | Up to eight picker choices |
 | Compact cycling picker | `mcType=cycle` | Click to advance to the next choice |
 | Conditional rows | `VisibleWhen` / `VisibleValues` | Show a row when an earlier picker equals `1` |
 | Shared page area | `mcSlot` | Let MCT contribute visual settings to Controls |

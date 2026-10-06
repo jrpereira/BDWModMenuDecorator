@@ -158,7 +158,9 @@ slots skips the whole contribution, pages included.
 
 A page whose settings change at runtime, or that owns its own storage, names a
 hooks file instead of a manifest. ModCoreSettings loads it in its own menu
-state, once per session, and modules beside it can be `require`d:
+state, once per session, and modules beside it can be `require`d. Every hooks
+folder shares DMM's module search path, and the first module loaded under a name
+wins, so give helper modules names unique to your mod (MCC's use `mc_`):
 
 ```lua
 {id='ExampleMod',name='Example',attach='ExampleMod',
@@ -176,7 +178,9 @@ return {contract=1,
 
 `context` is `{page=<page id>,directory=<configDirectory>}`. With `load` and
 `apply`, ModCoreSettings never reads or writes the page's config file: `load`
-supplies the values (missing ids keep their defaults), and Apply passes every
+supplies the values (missing ids keep their defaults; a value the setting cannot
+hold also keeps its default, is logged as `HOOK_VALUES_SKIPPED`, and is replaced
+on the next Apply; keybinds are accepted in any form the editor normalizes), and Apply passes every
 value by id and the edited ones as `{old=,new=}`. `apply` returns the values it
 saved, which become committed and are published in the Apply notification, plus
 an optional warning. An error from `apply` rejects the Apply and keeps the page
@@ -226,9 +230,13 @@ callback.
 
 `mcType=tab` renders an ordinary picker as outlined, right-aligned choices
 with a 24-pixel right inset on the same row as its label. Choices sit 4 pixels
-apart; the selected choice's outline is drawn at full strength. It supports two to eight
+apart; the selected choice's outline is drawn at full strength. It supports up to eight
 choices and retains DMM's keyboard/controller navigation, pending model and
-Apply/Restore behavior.
+Apply/Restore behavior. A single choice suits a read-only row.
+
+`mcReferenceLabel=<text>` on an `mcReadOnly=1`, `mcType=tab` picker adds a
+disabled button showing that text to the left of its choices, which then take
+150 pixels.
 
 `mcType=cycle` renders a picker as one button showing only the current choice at
 13pt; a click moves to the next choice, wrapping. The button is as wide as the
@@ -254,7 +262,9 @@ up to 384 pixels. A two-option `mcTabsWidth=440` picker is twice the default
 16, 15, 14, 12 and 11 respectively. Level2/3 use the heading color;
 Level4 uses normal body text; Level5/6 use
 muted text, with Level5 at 85% opacity. The property applies to setting labels
-and Category headings without changing control types.
+and Category headings without changing control types. A setting label at level 2
+is 20pt, larger than a level-2 heading, because it names the page's main choice.
+`mcLevel=1` on a setting gives it the title style, like `mcHeading=true`.
 
 Set `mcCategory=1` on a setting to make it stand in for its group's heading. Its
 label takes the Category heading's look: 16pt muted, unindented, with the
@@ -381,10 +391,14 @@ satisfy the destination range, choices and step; malformed values fail instead
 of being clamped or replaced. Duplicate config sections/keys are rejected.
 
 Migration retains original bytes and unknown keys, adding only missing declared
-destinations in one file transaction. Providers declaring migrations also pass
-through an owned DMM open adapter: a failed migration sets DMM's normal error
-state and disables editing/Apply until the problem is corrected. Other providers
-use the original open path. No DMM source files are modified.
+destinations in one file transaction. This runs whenever a page with stored
+settings opens, with or without migrations; for a page without them it adds
+missing keys with their `Default`. A failed initialization sets DMM's normal
+error state and disables editing/Apply until the problem is corrected. No DMM
+source files are modified. If a crash interrupts the transaction, the next open
+restores a moved-aside original and removes leftover `.mc-init.tmp`/`.mc-init.bak`
+files that are provably redundant; any other leftover file is named in the page
+error for you to review and delete.
 
 ## Mapped presets
 

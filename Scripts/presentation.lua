@@ -1,5 +1,6 @@
 -- Runs in DMM's Lua state. Uses its existing menu tick and model, never a timer.
 local M={version=1}
+local Manifest=require('mcs_manifest')
 local dirtySignalPrefix='MC_VALUE_DIRTY_1\n'
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function identityText(value)
@@ -22,23 +23,23 @@ local styles={
     [1]={22,'title'},[2]={16,'muted'},[3]={15,'muted'},
     [4]={14,'body'},[5]={12,'muted'},[6]={11,'muted'},
 }
+-- A level-2 setting label is larger than a level-2 heading: it names the page's main
+-- choice, while the heading groups rows.
+local settingLabelSizes={[2]=20}
 local headerSeparatorDim={R=0.62,G=0.55,B=0.42,A=0.25}
 local headerSeparatorBright={R=0.62,G=0.55,B=0.42,A=0.9}
 local headerGlowOn={R=0.95,G=0.63,B=0.08,A=0.10}
 local headerGlowOff={R=0,G=0,B=0,A=0}
+-- The page status shares the header tab row, left of the tabs, while it has
+-- this much width; otherwise it drops below them at full width.
+local headerStatusMinWidth,headerStatusGap,headerTabHeight=160,12,28
 -- A cycle button's background matches the keybind editor's Mode control.
 local cycleBackground={R=0.12,G=0.12,B=0.12,A=0.09}
+-- A navigation picker's choice while it separates two colliding keybinds.
+local conflictRed={R=0.85,G=0.2,B=0.16,A=1}
 function M.parse(content,items)
-    local sections,current={},nil
-    for line in (content..'\n'):gmatch('([^\n]*)\n') do
-        local header=trim(line):match('^%[([^%]]+)%]$')
-        if header then current={name=header};sections[#sections+1]=current
-        elseif current and not trim(line):match('^[;#]') then
-            local key,value=line:match('^%s*([^=]+)=(.*)$')
-            if key then current[trim(key)]=trim(value) end
-        end
-    end
-    local byId,groups,parents,seen,count={},{},{},{},0
+    local sections=Manifest.sections(content)
+    local byId,groups,parents,seen={},{},{},{}
     for _,s in ipairs(items) do byId[s.id]=s end
     local function level(value)
         if value==nil then return nil end
@@ -66,8 +67,9 @@ function M.parse(content,items)
         end
         return result
     end
-    for _,r in ipairs(sections) do
-        local group=r.name:match('^Category%.(.+)$')
+    for _,section in ipairs(sections) do
+        local r=section.fields
+        local group=section.name:match('^Category%.(.+)$')
         if group then
             local order=labelRule({mcLabelWhen=r.mcOrderWhen,mcLabels=r.mcOrders})
             if order then
@@ -89,9 +91,8 @@ function M.parse(content,items)
             groups[group]={font=level(r.mcLevel),help=r.mcHelp,labelRule=labelRule(r),order=order,parent=parent,
                 heading=flag(r.mcHeading,'mcHeading')~=false}
         end
-        if r.name=='Setting' or r.name:match('^Setting%.') then
-            count=count+1
-            local id=r.Id or 'setting_'..count
+        if section.setting then
+            local id=section.id
             local s=byId[id]
             if s and not seen[id] then
                 seen[id]=true
@@ -123,11 +124,6 @@ function M.parse(content,items)
                     assert(width and width%1==0 and width>=160 and width<=440,
                         'mcTabsWidth must be an integer from 160 through 440')
                     s.mcTabsWidth=width
-                end
-                if r.mcHeader~=nil and not hasLevel then
-                    assert(r.mcHeader=='0' or r.mcHeader=='1','mcHeader must be 0 or 1')
-                    assert(r.mcHeader=='0' or s.kind=='toggle','mcHeader=1 requires a toggle')
-                    s.mcHeader=r.mcHeader=='1'
                 end
                 if hasLevel then s.mcHeader=s.mcFont==1 end
                 if s.mcHeading then s.mcHeader=true end
@@ -181,7 +177,9 @@ function M.install(choices,controls,pages,options)
         local helpWidgets=setmetatable({},{__mode='k'})
         local valueSignals=setmetatable({},{__mode='k'})
         local ui
-        local constructing,pendingHelp,buttonSettingIndex
+        -- While DMM builds a page: the provider, the last row whose label button was
+        -- seen, and how many of that row's value buttons follow before the next label.
+        local constructing,pendingHelp,buttonSettingIndex,buttonsToSkip
         for k,v in pairs(api) do adapted[k]=v end
         adapted.setText=function(widget,value)
             local signal=valueSignals[widget]
@@ -209,15 +207,21 @@ function M.install(choices,controls,pages,options)
             if pendingHelp then
                 local help=api.caption(tree,pendingHelp.text);help:SetAutoWrapText(true)
                 M.style(help,5,api)
-                local slot=api.need(pendingHelp.heading:GetParent():AddChild(help),'KEM group help')
+                local slot=api.need(pendingHelp.heading:GetParent():AddChild(help),'MCS group help')
                 slot:SetPadding({Left=20,Top=0,Right=20,Bottom=8})
                 helpWidgets[pendingHelp.heading]=help;pendingHelp=nil
             end
             local button,label=api.button(...)
-            if constructing then
+            -- DMM builds each row's label button first; a picker then adds its left,
+            -- value and right buttons. The label text only confirms the position: a
+            -- page whose buttons fall out of step gets no further row styling.
+            if constructing and buttonsToSkip>0 then buttonsToSkip=buttonsToSkip-1
+            elseif constructing then
                 local nextSetting=providers[constructing].choices[buttonSettingIndex+1]
-                if nextSetting and select(2,...)==nextSetting.label then
+                if not nextSetting or select(2,...)~=nextSetting.label then buttonsToSkip=math.huge
+                else
                     buttonSettingIndex=buttonSettingIndex+1
+                    buttonsToSkip=nextSetting.kind=='picker' and 3 or 0
                     if nextSetting.mcFont==nil and not nextSetting.mcHeader then
                         local style=button.WidgetStyle
                         local normal,pressed=style.NormalPadding,style.PressedPadding
@@ -235,10 +239,10 @@ function M.install(choices,controls,pages,options)
         ui=build(tree,providers,adapted)
         local prepare,show,refresh,tick,clearPresses,isPressed=ui.prepare,ui.show,ui.refresh,ui.tick,ui.clearPresses,ui.isPressed
         local function new(kind) return api.construct('/Script/UMG.'..kind,tree) end
-        local function add(parent,child) return api.need(parent:AddChild(child),'KEM presentation child') end
+        local function add(parent,child) return api.need(parent:AddChild(child),'MCS presentation child') end
         local function sized(child,width,height)
             local box=new('SizeBox');box:SetWidthOverride(width);box:SetHeightOverride(height or 40)
-            local slot=api.need(box:SetContent(child),'KEM presentation size')
+            local slot=api.need(box:SetContent(child),'MCS presentation size')
             slot:SetHorizontalAlignment(0);slot:SetVerticalAlignment(0)
             return box
         end
@@ -248,6 +252,51 @@ function M.install(choices,controls,pages,options)
         -- Field-type editors are built on DMM's toggle row, whose label sits in the
         -- row content; its indent belongs on that content's slot, not the label's.
         local function toggleShell(setting) return setting.kind=='toggle' or setting.kind=='extension' end
+        -- The dirty star follows the label text: label and star share a box in the
+        -- label's place, so the star moves with the text and never overlaps it.
+        -- ModCoreSettings' dirty labels show and hide it. The box clips, so a label
+        -- longer than its column is cut there instead of reaching the controls.
+        local function starAfter(label)
+            local padding=label.Slot.Padding
+            local line=new('HorizontalBox');line:SetClipping(1)
+            local lineSlot=api.need(label:GetParent():SetContent(line),'MCS label line')
+            lineSlot:SetHorizontalAlignment(0);lineSlot:SetVerticalAlignment(2)
+            lineSlot:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
+            local labelSlot=add(line,label)
+            labelSlot:SetSize({SizeRule=0,Value=1});labelSlot:SetVerticalAlignment(2)
+            labelSlot:SetPadding({Left=padding.Left,Top=padding.Top,Right=0,Bottom=padding.Bottom})
+            local star=api.caption(tree,'*')
+            star:SetVisibility(2)
+            local starSlot=add(line,star)
+            starSlot:SetSize({SizeRule=0,Value=1});starSlot:SetVerticalAlignment(2)
+            starSlot:SetPadding({Left=4,Top=0,Right=padding.Right,Bottom=0})
+            return star
+        end
+        -- A navigation picker that separates two colliding keybinds shows its choice,
+        -- text and arrows, in red. DMM gives that text the body color and leaves arrow
+        -- art untinted, so clearing restores exactly those.
+        local function conflictStyle(row,red)
+            local function text(widget)
+                if red then widget:SetColorAndOpacity({SpecifiedColor=conflictRed,ColorUseRule=0})
+                else api.Theme.textColor(widget,'body') end
+            end
+            if row.value then text(row.value) end
+            for _,part in ipairs({row.parts[1],row.parts[3]}) do
+                local content=part and part.widget:GetContent()
+                if content then
+                    -- Arrow art sits in a size box; without art the arrow is a text label.
+                    local ok,art=pcall(function() return content:GetContent() end)
+                    if ok and art then art:SetColorAndOpacity(red and conflictRed or {R=1,G=1,B=1,A=1})
+                    else text(content) end
+                end
+            end
+        end
+        -- The star matches its label's font and color whenever the label is restyled.
+        local function starStyle(row)
+            if not row.mcStar then return end
+            row.mcStar:SetFont(row.mcLabel.Font)
+            pcall(function() row.mcStar:SetColorAndOpacity(row.mcLabel.ColorAndOpacity) end)
+        end
         -- A 1-pixel frame of four bars around a tab choice. The fill stays clear so
         -- the row's own background shows through.
         local function outlined(child)
@@ -258,7 +307,7 @@ function M.install(choices,controls,pages,options)
                 local bar=new('Border');bar:SetBrushColor(headerSeparatorDim)
                 local box=new('SizeBox')
                 if edge.h==0 then box:SetHeightOverride(1) else box:SetWidthOverride(1) end
-                api.need(box:SetContent(bar),'KEM tab outline')
+                api.need(box:SetContent(bar),'MCS tab outline')
                 local barSlot=add(overlay,box);barSlot:SetHorizontalAlignment(edge.h);barSlot:SetVerticalAlignment(edge.v)
                 bars[#bars+1]=bar
             end
@@ -270,6 +319,10 @@ function M.install(choices,controls,pages,options)
             for i,row in ipairs(panel.rows) do
                 local setting=providers[index].choices[i]
                 row.mcLabel=labels[row.widget]
+                -- Navigation and read-only rows are never dirty.
+                if row.mcLabel and not setting.mcNavigation and not setting.mcReadOnly then
+                    row.mcStar=starAfter(row.mcLabel)
+                end
                 local identity=api.caption(tree,settingIdentity(i,providers[index],setting))
                 identity:SetVisibility(1)
                 add(row.wrapper:GetContent(),identity)
@@ -281,9 +334,10 @@ function M.install(choices,controls,pages,options)
                 end
                 local level=setting.mcHeading and 1 or setting.mcFont
                 M.style(row.mcLabel,level,api)
-                if level==2 then api.Theme.font(row.mcLabel,api.theme,20) end
+                if settingLabelSizes[level] then api.Theme.font(row.mcLabel,api.theme,settingLabelSizes[level]) end
                 -- Theme.font only writes the property; a built label shows it after SetFont.
                 if level then row.mcLabel:SetFont(row.mcLabel.Font) end
+                starStyle(row)
                 if level==1 or level==2 then
                     local slot=toggleShell(setting) and row.widget:GetContent().Slot or row.mcLabel.Slot
                     local padding=slot.Padding
@@ -294,7 +348,7 @@ function M.install(choices,controls,pages,options)
                     local placeholder=new('SizeBox')
                     local path=assert(row.wrapper:GetFullName():match('^%S+ (.+)$'))
                     local marker=api.caption(tree,'MC_HEADER_ROW\n'..path)
-                    api.need(placeholder:SetContent(marker),'KEM header identity')
+                    api.need(placeholder:SetContent(marker),'MCS header identity')
                     placeholder:SetVisibility(1)
                     local children={}
                     for n=0,panel.scroll:GetChildrenCount()-1 do
@@ -309,7 +363,7 @@ function M.install(choices,controls,pages,options)
                     add(ui.mcHeaderHost,row.wrapper)
                     local title=ui.mcHeaderTitle
                     if title then
-                        assert(ui.mcHeaderHost:RemoveChild(title),'KEM page title relocation')
+                        assert(ui.mcHeaderHost:RemoveChild(title),'MCS page title relocation')
                         local titleSlot=add(ui.mcHeaderHost,title)
                         titleSlot:SetHorizontalAlignment(1);titleSlot:SetVerticalAlignment(2)
                     end
@@ -326,7 +380,7 @@ function M.install(choices,controls,pages,options)
                     local width=math.floor(math.min(110,(572-(count+1))/count))
                     local function separator()
                         local bar=new('Border');bar:SetBrushColor(headerSeparatorDim)
-                        add(tabs,sized(bar,1,28))
+                        add(tabs,sized(bar,1,headerTabHeight))
                         row.mcHeaderSeparators[#row.mcHeaderSeparators+1]=bar
                     end
                     separator()
@@ -339,8 +393,8 @@ function M.install(choices,controls,pages,options)
                         label:SetJustification(1);label:SetTextOverflowPolicy(1)
                         label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
                         local glow=new('Border');glow:SetBrushColor(headerGlowOff)
-                        api.need(glow:SetContent(button),'KEM header tab glow')
-                        add(tabs,sized(glow,width,28))
+                        api.need(glow:SetContent(button),'MCS header tab glow')
+                        add(tabs,sized(glow,width,headerTabHeight))
                         row.mcTabs[#row.mcTabs+1]={widget=button,label=label,value=value,
                             pressed=false,pointer=false,glow=glow}
                         separator()
@@ -348,6 +402,7 @@ function M.install(choices,controls,pages,options)
                     local slot=add(ui.mcHeaderTabs,tabs)
                     slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(1)
                     row.mcHeaderTabsBox=tabs
+                    row.mcHeaderTabsWidth=count*width+count+1
                     if row.value then row.value:SetVisibility(1) end
                     for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
                 elseif setting.mcTabs then
@@ -412,7 +467,7 @@ function M.install(choices,controls,pages,options)
                     label:SetJustification(1);label:SetTextOverflowPolicy(1)
                     label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
                     local frame=new('Border');frame:SetBrushColor(cycleBackground)
-                    api.need(frame:SetContent(button),'KEM cycle frame')
+                    api.need(frame:SetContent(button),'MCS cycle frame')
                     local box=sized(frame,width,32)
                     local overlay=row.background:GetParent()
                     local slot=add(overlay,box);slot:SetVerticalAlignment(2)
@@ -439,7 +494,7 @@ function M.install(choices,controls,pages,options)
                     api.Theme.font(value,api.theme,13)
                     value:SetJustification(0);value:SetAutoWrapText(true)
                     local box=new('SizeBox');box:SetWidthOverride(584-wrapLabelWidth-pickerRightMargin)
-                    api.need(box:SetContent(value),'KEM wrapped value')
+                    api.need(box:SetContent(value),'MCS wrapped value')
                     local overlay=row.background:GetParent()
                     local slot=add(overlay,box);slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(2)
                     slot:SetPadding({Left=0,Top=0,Right=pickerRightMargin,Bottom=0})
@@ -518,10 +573,16 @@ function M.install(choices,controls,pages,options)
             end
             panel.mcPresented=true
         end
-        function ui:prepare(index)
-            constructing=index;buttonSettingIndex=0;prepare(self,index);constructing=nil;decorate(index)
+        -- Construction state never outlives DMM's build, even when the build fails.
+        function ui:prepare(index,...)
+            constructing,buttonSettingIndex,buttonsToSkip,pendingHelp=index,0,0,nil
+            local results=table.pack(pcall(prepare,self,index,...))
+            constructing,pendingHelp=nil,nil
+            if not results[1] then error(results[2],0) end
+            decorate(index)
+            return table.unpack(results,2,results.n)
         end
-        function ui:show(index) self:prepare(index);return show(self,index) end
+        function ui:show(index,...) self:prepare(index);return show(self,index,...) end
         local function dynamic(rule,model,fallback)
             if not rule then return fallback end
             for i,s in ipairs(model.items) do
@@ -604,6 +665,21 @@ function M.install(choices,controls,pages,options)
                 if index~=self.active and panel.mcHeader then
                     panel.mcHeader.wrapper:SetVisibility(1)
                     if panel.mcHeader.mcHeaderTabsBox then panel.mcHeader.mcHeaderTabsBox:SetVisibility(1) end
+                end
+            end
+            local status=self.mcHeaderStatus
+            if status then
+                local header=self.panels[self.active].mcHeader
+                local used=header and header.visible and header.mcHeaderTabsWidth or 0
+                local free=572-used-headerStatusGap
+                local beside=used==0 or free>=headerStatusMinWidth
+                local width=(used==0 or not beside) and 572 or free
+                local top=beside and 0 or headerTabHeight
+                if status.width~=width or status.top~=top then
+                    status.box:SetWidthOverride(width)
+                    local p=status.padding
+                    status.slot:SetPadding({Left=p.Left,Top=p.Top+top,Right=p.Right,Bottom=p.Bottom})
+                    status.width,status.top=width,top
                 end
             end
             for _,heading in ipairs(self.panels[self.active].headings) do
@@ -701,6 +777,7 @@ function M.install(choices,controls,pages,options)
                             api.Theme.font(row.mcLabel,api.theme,beforeCategory and 16 or 14)
                             row.mcLabel:SetFont(row.mcLabel.Font)
                             api.Theme.textColor(row.mcLabel,beforeCategory and 'muted' or 'body')
+                            starStyle(row)
                             row.mcCategoryStyle=beforeCategory
                         end
                         local labelSlot=toggleShell(setting) and row.widget:GetContent().Slot
@@ -753,6 +830,15 @@ function M.install(choices,controls,pages,options)
                     if row.visible then navigation[#navigation+1]=i end
                 end
                 self.visibleRows=navigation;self:wireNavigation(self.footer)
+            end
+            -- Field types mark the pickers separating colliding keybinds on each refresh.
+            local separating=not self.model.error and self.model.mcConflictPickers or {}
+            for i,row in ipairs(panel.rows) do
+                local red=separating[i]==true
+                if row.parts and #row.parts==3 and not row.mcTabs and (row.mcConflictRed or false)~=red then
+                    conflictStyle(row,red)
+                    row.mcConflictRed=red
+                end
             end
             if pageReady then
                 -- Cached panels have no stable child index after eviction.
@@ -827,9 +913,32 @@ function M.install(choices,controls,pages,options)
     if pages then
         local buildPages=pages.build
         pages.build=function(tree,providers,status,api)
-            local page=buildPages(tree,providers,status,api)
-            local title=assert(page.modTitle,'KEM page title')
-            local parent=assert(title:GetParent(),'KEM page header parent')
+            -- Unapplied changes show as a * after the page title instead of DMM's status
+            -- text. The status line keeps every other message: errors, failed Applies, hints.
+            local page,titleText
+            local adapted={}
+            for key,value in pairs(api) do adapted[key]=value end
+            local function unapplied()
+                local model=page and page.controls and page.controls.model
+                return model and not model.error and type(model.dirty)=='function' and model:dirty() or false
+            end
+            local function showTitle()
+                if titleText then api.setText(page.modTitle,unapplied() and titleText..' *' or titleText) end
+            end
+            adapted.setText=function(widget,text)
+                if page and widget==page.modTitle then titleText=text;return showTitle() end
+                if page and widget==page.controlStatus then
+                    local T=api.t or function(copy) return copy end
+                    if text==T('Unapplied changes') then text='' end
+                    local result=api.setText(widget,text)
+                    showTitle()
+                    return result
+                end
+                return api.setText(widget,text)
+            end
+            page=buildPages(tree,providers,status,adapted)
+            local title=assert(page.modTitle,'MCS page title')
+            local parent=assert(title:GetParent(),'MCS page header parent')
             local host=api.construct('/Script/UMG.Overlay',tree)
             local children={}
             for n=0,parent:GetChildrenCount()-1 do
@@ -839,29 +948,43 @@ function M.install(choices,controls,pages,options)
                     Left=padding.Left,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom}}
             end
             assert(#children>=2 and children[1].widget:GetFullName()==title:GetFullName(),
-                'KEM page header layout')
+                'MCS page header layout')
+            local pageStatus=assert(page.controlStatus,'MCS page status')
+            local statusName,statusPadding=pageStatus:GetFullName()
             parent:ClearChildren()
             -- A header picker's choices hang as tabs from the divider under the
-            -- title. The strip stays empty, and takes no height, until one does.
+            -- title. The page status shares that row, so it stays beneath the
+            -- divider whether or not tabs are shown.
             local strip=api.construct('/Script/UMG.Overlay',tree)
             local stripBox=api.construct('/Script/UMG.SizeBox',tree)
             stripBox:SetWidthOverride(572)
-            api.need(stripBox:SetContent(strip),'KEM header tabs strip')
+            api.need(stripBox:SetContent(strip),'MCS header tabs strip')
             for index,child in ipairs(children) do
-                api.need(parent:AddChild(index==1 and host or child.widget),'KEM page header child')
-                    :SetPadding(child.padding)
+                if child.widget:GetFullName()==statusName then
+                    statusPadding=child.padding
+                else
+                    api.need(parent:AddChild(index==1 and host or child.widget),'MCS page header child')
+                        :SetPadding(child.padding)
+                end
                 if index==2 then
-                    api.need(parent:AddChild(stripBox),'KEM header tabs slot')
+                    api.need(parent:AddChild(stripBox),'MCS header tabs slot')
                         :SetPadding({Left=0,Top=0,Right=0,Bottom=0})
                 end
             end
-            api.need(host:AddChild(title),'KEM page title')
+            assert(statusPadding,'MCS page status placement')
+            local statusBox=api.construct('/Script/UMG.SizeBox',tree)
+            statusBox:SetWidthOverride(572)
+            api.need(statusBox:SetContent(pageStatus),'MCS page status box')
+            local statusSlot=api.need(strip:AddChild(statusBox),'MCS page status slot')
+            statusSlot:SetHorizontalAlignment(1);statusSlot:SetVerticalAlignment(1)
+            statusSlot:SetPadding(statusPadding)
+            api.need(host:AddChild(title),'MCS page title')
             title:SetVisibility(4)
             M.style(title,1,api)
             M.style(page.filterLabel,1,api)
             page.filterLabel.Slot:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
-            local header=assert(page.filterButton:GetParent(),'KEM mod-browser header')
-            local list=assert(header:GetParent(),'KEM mod-browser page')
+            local header=assert(page.filterButton:GetParent(),'MCS mod-browser header')
+            local list=assert(header:GetParent(),'MCS mod-browser page')
             local headerName=header:GetFullName()
             local children={}
             for n=0,list:GetChildrenCount()-1 do
@@ -873,17 +996,17 @@ function M.install(choices,controls,pages,options)
             list:ClearChildren()
             local inserted=false
             for _,child in ipairs(children) do
-                local slot=api.need(list:AddChild(child.widget),'KEM mod-browser child')
+                local slot=api.need(list:AddChild(child.widget),'MCS mod-browser child')
                 slot:SetPadding(child.padding)
                 if child.widget:GetFullName()==headerName then
                     local line=api.construct('/Script/UMG.SizeBox',tree)
                     line:SetWidthOverride(572);line:SetHeightOverride(2)
-                    api.need(line:SetContent(api.Theme.image(tree,api.theme,'horizontal',api)),'KEM mod-browser divider')
-                    api.need(list:AddChild(line),'KEM mod-browser divider slot')
+                    api.need(line:SetContent(api.Theme.image(tree,api.theme,'horizontal',api)),'MCS mod-browser divider')
+                    api.need(list:AddChild(line),'MCS mod-browser divider slot')
                     inserted=true
                 end
             end
-            assert(inserted,'KEM mod-browser header placement')
+            assert(inserted,'MCS mod-browser header placement')
             local function styleBrowserRows(rows)
                 for _,row in ipairs(rows or {}) do
                     if row.widget then
@@ -911,6 +1034,7 @@ function M.install(choices,controls,pages,options)
             page.controls.mcHeaderHost=host
             page.controls.mcHeaderTitle=title
             page.controls.mcHeaderTabs=strip
+            page.controls.mcHeaderStatus={box=statusBox,slot=statusSlot,padding=statusPadding,width=572,top=0}
             return page
         end
     end
