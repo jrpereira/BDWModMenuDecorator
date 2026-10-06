@@ -3,32 +3,18 @@
 -- the result, so every index-based feature sees one ordinary page. The page model routes
 -- inserted rows to their source page's own model: storage, Apply events and config stay theirs.
 local M={version=1}
-local function trim(value) return (value or ''):match('^%s*(.-)%s*$') end
+local Manifest=require('mcs_manifest')
 -- Inserted rows render as plain DMM controls; source presentation keys are not copied,
 -- except a label rule naming an earlier inserted row.
 local COPIED={'Id','Type','Label','Description','PresetValues','PresetLabels','Presets','Default',
     'Minimum','Maximum','Step','Decimals','Prefix','Suffix'}
 
--- Raw [Setting] sections with their line span, as DMM's parser reads them.
+-- Raw [Setting] sections with their line span, as DMM's parser reads them, and the lines.
 local function sections(content)
-    local list,current,lines={},nil,{}
-    for line in (content..'\n'):gmatch('([^\n]*)\n') do lines[#lines+1]=line end
-    if lines[#lines]=='' then lines[#lines]=nil end
-    for n,line in ipairs(lines) do
-        local header=trim(line):match('^%[([^%]]+)%]$')
-        if header then
-            if current then current.last=n-1 end
-            current=nil
-            if header=='Setting' or header:match('^Setting%.') then
-                current={first=n,fields={}};list[#list+1]=current
-            end
-        elseif current and not trim(line):match('^[;#]') then
-            local key,value=line:match('^%s*([^=]+)=(.*)$')
-            if key then current.fields[trim(key)]=trim(value) end
-        end
-    end
-    if current then current.last=#lines end
-    return list,lines
+    local list,lines=Manifest.sections(content)
+    local settings={}
+    for _,section in ipairs(list) do if section.setting then settings[#settings+1]=section end end
+    return settings,lines
 end
 M.sections=sections
 
@@ -36,13 +22,13 @@ function M.parse(content,items)
     local list=sections(content)
     local byId,seen={},{}
     for _,item in ipairs(items) do byId[item.id]=item end
-    for n,section in ipairs(list) do
+    for _,section in ipairs(list) do
         local name=section.fields.mcSlot
         if name~=nil then
             assert(#name<=64 and name:match('^[%w_]+$'),'invalid mcSlot')
             assert(not seen[name],'duplicate mcSlot '..name)
             seen[name]=true
-            local item=assert(byId[section.fields.Id or ('setting_'..n)],'mcSlot setting unavailable')
+            local item=assert(byId[section.id],'mcSlot setting unavailable')
             assert(item.mcReadOnly,'mcSlot requires mcReadOnly=1')
             item.mcSlot=name
         end

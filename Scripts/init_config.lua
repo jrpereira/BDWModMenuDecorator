@@ -1,6 +1,9 @@
--- Startup-only compatibility for DMM's existing-file configuration contract.
--- DMM still owns pending values, Apply, Reset and Restore.
+-- DMM opens a page only when its config file exists and holds every key. Each time a
+-- page with stored settings opens, this adds the missing keys (migrating declared
+-- defaults) in one file transaction, then lets DMM open it. DMM still owns pending
+-- values, Apply, Reset and Restore.
 local M={}
+local Manifest=require('mcs_manifest')
 local LIMIT=1048576
 local function trim(s) return s:match('^%s*(.-)%s*$') end
 
@@ -71,72 +74,68 @@ function M.overlay(defaults,existing)
 end
 
 function M.defaultSources(manifest,settings)
-    local byId,seen,current,count={},{},nil,0
+    local byId,seen={},{}
     local rules,names={},{}
     for _,setting in ipairs(settings) do
         if setting.id then byId[setting.id]=setting end
         setting.mcDefaultFrom=nil;setting.mcDefaultMap=nil;setting.mcDefaultRules=nil;setting.mcValueMap=nil
     end
-    local function finish()
-        if not current then return end
-        if current.rule then
-            assert(not names[current.rule],'duplicate DefaultRule section')
-            names[current.rule]=true;rules[#rules+1]=current;return
-        end
-        local id=current.Id or 'setting_'..count
-        local setting=byId[id]
-        if setting and not seen[id] then
-            seen[id]=true
-            if current.DefaultFrom then
-                validateName(current.DefaultFrom,'DefaultFrom')
-                assert(setting.section,'DefaultFrom requires explicit ConfigSection')
-                setting.mcDefaultFrom=current.DefaultFrom
-                if current.DefaultFromMap then
-                    local map={}
-                    for entry in (current.DefaultFromMap..';'):gmatch('(.-);') do
-                        local a,b=entry:match('^%s*([^:]+):([^:]+)%s*$')
-                        local source=number(a,'DefaultFromMap source')
-                        assert(map[source]==nil,'duplicate DefaultFromMap source')
-                        map[source]=number(b,'DefaultFromMap destination')
-                    end
-                    setting.mcDefaultMap=map
-                end
-            else
-                assert(not current.DefaultFromMap,'DefaultFromMap requires DefaultFrom')
-            end
-            if current.ValueMap then
-                assert(setting.section,'ValueMap requires explicit ConfigSection')
-                assert(setting.kind=='picker','ValueMap requires a picker')
+    local function declare(setting,current)
+        if current.DefaultFrom then
+            validateName(current.DefaultFrom,'DefaultFrom')
+            assert(setting.section,'DefaultFrom requires explicit ConfigSection')
+            setting.mcDefaultFrom=current.DefaultFrom
+            if current.DefaultFromMap then
                 local map={}
-                for entry in (current.ValueMap..';'):gmatch('(.-);') do
+                for entry in (current.DefaultFromMap..';'):gmatch('(.-);') do
                     local a,b=entry:match('^%s*([^:]+):([^:]+)%s*$')
-                    local from,to=number(a,'ValueMap source'),number(b,'ValueMap destination')
-                    assert(map[from]==nil,'duplicate ValueMap source')
-                    map[from]=to
+                    local source=number(a,'DefaultFromMap source')
+                    assert(map[source]==nil,'duplicate DefaultFromMap source')
+                    map[source]=number(b,'DefaultFromMap destination')
                 end
-                setting.mcValueMap=map
+                setting.mcDefaultMap=map
+            end
+        else
+            assert(not current.DefaultFromMap,'DefaultFromMap requires DefaultFrom')
+        end
+        if current.ValueMap then
+            assert(setting.section,'ValueMap requires explicit ConfigSection')
+            assert(setting.kind=='picker','ValueMap requires a picker')
+            local map={}
+            for entry in (current.ValueMap..';'):gmatch('(.-);') do
+                local a,b=entry:match('^%s*([^:]+):([^:]+)%s*$')
+                local from,to=number(a,'ValueMap source'),number(b,'ValueMap destination')
+                assert(map[from]==nil,'duplicate ValueMap source')
+                map[from]=to
+            end
+            setting.mcValueMap=map
+        end
+    end
+    for _,section in ipairs((Manifest.sections(manifest))) do
+        local fields=section.fields
+        if section.name:match('^DefaultRule%.') then
+            -- Rule sections hold only rule fields, each given once.
+            assert(#section.malformed==0,'malformed DefaultRule field')
+            local repeated=next(section.duplicates)
+            assert(not repeated,'duplicate migration field '..tostring(repeated))
+            assert(fields.rule==nil,'reserved migration field')
+            assert(not names[section.name],'duplicate DefaultRule section')
+            names[section.name]=true
+            local raw={}
+            for key,value in pairs(fields) do raw[key]=value end
+            raw.rule=section.name
+            rules[#rules+1]=raw
+        elseif section.setting then
+            for _,key in ipairs({'DefaultFrom','DefaultFromMap','ValueMap'}) do
+                assert(not section.duplicates[key],'duplicate migration field '..key)
+            end
+            local setting=byId[section.id]
+            if setting and not seen[section.id] then
+                seen[section.id]=true
+                declare(setting,fields)
             end
         end
     end
-    for line in (manifest..'\n'):gmatch('([^\n]*)\n') do
-        local header=trim(line):match('^%[([^%]]+)%]$')
-        if header then
-            finish();current=nil
-            if header=='Setting' or header:match('^Setting%.') then count=count+1;current={} end
-            if header:match('^DefaultRule%.') then current={rule=header} end
-        elseif current and not trim(line):match('^[;#]') then
-            local key,value=line:match('^%s*([^=]+)=(.*)$')
-            if key then
-                key=trim(key)
-                assert(key~='rule','reserved migration field')
-                if current.rule or key=='DefaultFrom' or key=='DefaultFromMap' or key=='ValueMap' then
-                    assert(current[key]==nil,'duplicate migration field '..key)
-                end
-                current[key]=trim(value)
-            elseif current.rule and trim(line)~='' then error('malformed DefaultRule field') end
-        end
-    end
-    finish()
     for _,raw in ipairs(rules) do
         local setting=assert(byId[raw.Target],'unknown DefaultRule target')
         assert(setting.section,'DefaultRule requires explicit ConfigSection')
@@ -305,6 +304,33 @@ function M.merge(original,settings,choices)
     return text
 end
 
+-- A crash during commit can leave this module's transaction files. Each is cleaned
+-- up only when it is provably redundant; anything else still blocks for review.
+-- output(original) is what this run writes for a given original (nil: no file).
+function M.recover(path,fs,output)
+    local tmp,backup=path..'.mc-init.tmp',path..'.mc-init.bak'
+    local function expected(original)
+        local ok,text=pcall(output,original)
+        return ok and text or nil
+    end
+    local current,saved=fs.read(path),fs.read(backup)
+    if saved~=nil then
+        if current==nil then
+            -- Interrupted between moving the original aside and installing the new
+            -- file: put the original back, as the transaction's rollback would.
+            fs.rename(backup,path);current=saved
+        elseif current==saved or current==expected(saved) then
+            -- The config is the original, or exactly what merging the original gives.
+            fs.remove(backup)
+        end
+    end
+    local staged=fs.read(tmp)
+    if staged~=nil and (staged==current or staged==expected(current)) then
+        -- Staged but never installed: the same bytes are written again if needed.
+        fs.remove(tmp)
+    end
+end
+
 -- Windows rename refuses an existing destination. Preserve recovery files if
 -- rollback cannot safely restore the original; never overwrite a new file.
 function M.commit(plan,fs)
@@ -312,7 +338,8 @@ function M.commit(plan,fs)
     local path=plan.path
     local tmp,backup=path..'.mc-init.tmp',path..'.mc-init.bak'
     for _,suffix in ipairs({'.mc-init.tmp','.mc-init.bak','.dmm-toggle.tmp','.dmm-toggle.bak'}) do
-        assert(fs.read(path..suffix)==nil,'previous config transaction needs review: '..path..suffix)
+        assert(fs.read(path..suffix)==nil,'an interrupted config write left '..path..suffix
+            ..' and it needs review: compare it with '..path..', keep what you need, then delete it')
     end
     assert(fs.read(path)==plan.original,'config changed before initialization')
     local staged,stageError=pcall(function()
@@ -363,10 +390,12 @@ function M.plan(provider,manifest,choices,fs,settings)
         assert(not path or target==path,'DMM requires one config file per provider')
         path=target
     end
+    local function output(original) return M.merge(M.remapExisting(original,settings,choices),settings,choices) end
+    M.recover(path,fs,output)
     local original=fs.read(path)
-    local content=M.merge(M.remapExisting(original,settings,choices),settings,choices)
-    -- Validate the result through DMM itself before any filesystem mutation.
-    -- This module instance is private, never DMM's live require() state.
+    local content=output(original)
+    -- Validate the result through DMM itself before any filesystem mutation. This is
+    -- DMM's live module: its reader is swapped only for this synchronous open.
     local saved=choices.fs
     choices.fs={read=function(requested) assert(requested==path,'unexpected DMM config path');return content end}
     local ok,model=pcall(choices.open,{id=provider.id,path=provider.path,choices=settings})
@@ -381,16 +410,8 @@ end
 function M.install(choices,fs)
     if choices.mcConfigVersion then return false end
     fs=fs or M.fs
-    local parse,open=choices.parse,choices.open
+    local open=choices.open
     local planning=false
-    choices.parse=function(content)
-        local settings=parse(content)
-        if settings[1] and (content:match('DefaultFrom%s*=') or content:match('DefaultFromMap%s*=')
-            or content:match('ValueMap%s*=') or content:match('%[DefaultRule%.')) then
-            settings[1].mcMigrationDeclared=true
-        end
-        return settings
-    end
     choices.open=function(provider)
         if planning or provider.testOnly or not (provider.choices and provider.choices[1]) then
             return open(provider)

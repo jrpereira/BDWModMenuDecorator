@@ -50,7 +50,7 @@ local callbacks={}
 local events={on=function(_,name,callback) callbacks[name]=callback end}
 local settingsApi={}
 extension.install({version=1,choices=choices,controls=controls,pages=pages,events=events,settingsApi=settingsApi})
-local order={'navigation','mapped_presets','presentation','browser_groups','init_config','dmm_lifecycle',
+local order={'mcs_manifest','navigation','mapped_presets','presentation','browser_groups','init_config','dmm_lifecycle',
  'menu_contributions','menu_pages','page_links','menu_slots','page_hooks','field_types','keybind_editor','standard_controls'}
 assert(#loaded==#order)
 for n,name in ipairs(order) do assert(loaded[n]:match(name..'%.lua$'),'load '..n) end

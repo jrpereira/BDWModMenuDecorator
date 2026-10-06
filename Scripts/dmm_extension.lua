@@ -38,6 +38,9 @@ extension={
         assert(type(dmm)=='table' and dmm.version==1,'unsupported DMM extension API')
         assert(type(dmm.choices)=='table' and type(dmm.controls)=='table' and type(dmm.pages)=='table',
             'DMM extension modules unavailable')
+        -- The manifest reader the modules below share; DMM's require resolves in DMM's
+        -- folder, so it is placed in package.loaded under a name only this mod uses.
+        package.loaded.mcs_manifest=module('mcs_manifest')
         local navigation=module('navigation')
         local mapped=module('mapped_presets')
         local presentation=module('presentation')
@@ -73,7 +76,7 @@ extension={
             return assert(content,'unreadable '..path)
         end
         -- Hooks storage sits inside the slot model, which must stay outermost.
-        pageHooks.install(dmm.choices)
+        pageHooks.install(dmm.choices,report)
         local loadHooks=pageHooks.loader()
         local function hooked(page)
             local hooks=loadHooks(page.hooks)

@@ -1,20 +1,19 @@
 -- A presentation-only picker can drive DMM visibility without owning a config key.
 local M={version=1}
-local function trim(value) return (value or ''):match('^%s*(.-)%s*$') end
+local Manifest=require('mcs_manifest')
 
 function M.parse(content,items)
-    local current,sections=nil,0
     local byId={}
     for _,item in ipairs(items) do byId[item.id]=item end
-    local function finish()
-        if not current or (current.mcNavigation==nil and current.mcReadOnly==nil
-            and current.mcLinkPage==nil) then return end
+    local function finish(section)
+        local current=section.fields
+        if current.mcNavigation==nil and current.mcReadOnly==nil
+            and current.mcLinkPage==nil then return end
         assert(current.mcLinkPage==nil or current.mcNavigation=='1','mcLinkPage requires mcNavigation=1')
         if current.mcReadOnly~=nil then
             assert(current.mcReadOnly=='1','mcReadOnly must be 1')
         else assert(current.mcNavigation=='1','mcNavigation must be 1') end
-        local item=assert(byId[current.Id or ('setting_'..sections)],
-            'navigation picker setting unavailable')
+        local item=assert(byId[section.id],'navigation picker setting unavailable')
         assert(item.kind=='picker','mcNavigation requires a picker')
         assert(not item.targets and not current.MappedPresetTargets,
             'navigation picker cannot own preset targets')
@@ -33,18 +32,7 @@ function M.parse(content,items)
             end
         end
     end
-    for line in (content..'\n'):gmatch('([^\n]*)\n') do
-        local section=trim(line):match('^%[([^%]]+)%]$')
-        if section then
-            finish()
-            current=(section=='Setting' or section:match('^Setting%.')) and {} or nil
-            if current then sections=sections+1 end
-        elseif current then
-            local key,value=line:match('^%s*([^=]+)=(.*)$')
-            if key then current[trim(key)]=trim(value) end
-        end
-    end
-    finish()
+    for _,section in ipairs(Manifest.settings(content)) do finish(section) end
     return items
 end
 

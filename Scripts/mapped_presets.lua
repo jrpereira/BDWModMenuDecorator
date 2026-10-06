@@ -1,6 +1,7 @@
 -- Installed in DMM's own Lua state through DMM's startup extension API.
 -- No second model, configuration writer, widget batch or polling loop.
 local M={version=1}
+local Manifest=require('mcs_manifest')
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function split(text,delimiter)
     local out={}
@@ -13,28 +14,16 @@ local function finite(value)
 end
 
 function M.parse(content,items,choices)
-    local raw,current,count={},nil,0
-    for line in (content..'\n'):gmatch('([^\n]*)\n') do
-        local header=trim(line):match('^%[([^%]]+)%]$')
-        if header then
-            current=nil
-            if header=='Setting' or header:match('^Setting%.') then
-                count=count+1;current={fallback='setting_'..count};raw[#raw+1]=current
-            end
-        elseif current and not trim(line):match('^[;#]') then
-            local key,value=line:match('^%s*([^=]+)=(.*)$')
-            if key then current[trim(key)]=trim(value) end
-        end
-    end
     local byId,owners={},{ }
     for i,setting in ipairs(items) do byId[setting.id]=i end
     -- Do not compete with DMM's existing homogeneous linked presets.
     for i,s in ipairs(items) do
         if s.targets then for _,target in ipairs(s.targets) do owners[target]=i end end
     end
-    for _,r in ipairs(raw) do
+    for _,section in ipairs(Manifest.settings(content)) do
+        local r=section.fields
         if r.MappedPresetTargets or r.MappedPresetValues then
-            local index=assert(byId[r.Id or r.fallback],'mapped preset has no supported setting')
+            local index=assert(byId[section.id],'mapped preset has no supported setting')
             local setting=items[index]
             assert(setting.kind=='picker' and not setting.targets,'mapped preset requires an ordinary picker')
             assert(r.MappedPresetTargets and r.MappedPresetValues,'mapped preset requires targets and values')
@@ -200,7 +189,7 @@ function M.install(choices,controls)
         and type(choices.format)=='function','unsupported DMM choices API')
     assert(type(controls)=='table' and type(controls.build)=='function','unsupported DMM controls API')
     if choices.mcMappedVersion then
-        assert(choices.mcMappedVersion==M.version and controls.mcMappedVersion==M.version,'incompatible KEM mapping wrapper')
+        assert(choices.mcMappedVersion==M.version and controls.mcMappedVersion==M.version,'incompatible MCS mapping wrapper')
         return false
     end
     local parse,open,build=choices.parse,choices.open,controls.build

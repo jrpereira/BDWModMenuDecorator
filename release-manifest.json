@@ -25,6 +25,7 @@
     "Scripts/menu_contributions.lua": "Scripts/menu_contributions.lua",
     "Scripts/menu_pages.lua": "Scripts/menu_pages.lua",
     "Scripts/menu_slots.lua": "Scripts/menu_slots.lua",
+    "Scripts/mcs_manifest.lua": "Scripts/mcs_manifest.lua",
     "Scripts/page_hooks.lua": "Scripts/page_hooks.lua",
     "Scripts/page_links.lua": "Scripts/page_links.lua",
     "Scripts/row_error.lua": "Scripts/row_error.lua",

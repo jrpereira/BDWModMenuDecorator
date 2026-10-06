@@ -111,6 +111,36 @@ choices.open=function() return {error='invalid user value'} end
 fails(function() Config.plan(provider,'schema',choices,fs) end,'invalid user value')
 assert(fs.writes==0)
 choices.open=function() return {} end
+-- Files left by a crashed commit are cleaned up only when provably redundant.
+local base='Mods/Example/config.ini'
+-- Staged but never installed: the staged bytes are this run's output.
+fs,files=memory({[base]=partial,[base..'.mc-init.tmp']=complete})
+plan=Config.plan(provider,'schema',choices,fs)
+assert(not files[base..'.mc-init.tmp'] and plan.original==partial and plan.content==complete,'a staged copy of this run is removed')
+assert(Config.commit(plan,fs) and files[base]==complete)
+-- Interrupted between the renames: the original is put back, then the staged copy goes.
+fs,files=memory({[base..'.mc-init.bak']=partial,[base..'.mc-init.tmp']=complete})
+plan=Config.plan(provider,'schema',choices,fs)
+assert(files[base]==partial and not files[base..'.mc-init.bak'] and not files[base..'.mc-init.tmp']
+    and plan.original==partial,'a moved-aside original is restored')
+-- Installed but not cleaned up: the config is exactly the merged original.
+fs,files=memory({[base]=complete,[base..'.mc-init.bak']=partial})
+plan=Config.plan(provider,'schema',choices,fs)
+assert(not files[base..'.mc-init.bak'] and plan.original==complete,'a backup the config was built from is removed')
+-- Anything that does not match stays, and the page asks for review in plain words.
+fs,files=memory({[base]=partial,[base..'.mc-init.bak']='older edits'})
+plan=Config.plan(provider,'schema',choices,fs)
+assert(files[base..'.mc-init.bak']=='older edits')
+fails(function() Config.commit(plan,fs) end,'an interrupted config write left '..base..'.mc-init.bak and it needs review')
+fs,files=memory({[base]=partial,[base..'.mc-init.tmp']='other bytes'})
+plan=Config.plan(provider,'schema',choices,fs)
+assert(files[base..'.mc-init.tmp']=='other bytes','an unrelated staged file stays')
+fails(function() Config.commit(plan,fs) end,'needs review')
+-- DMM's own transaction files are never touched.
+fs,files=memory({[base]=partial,[base..'.dmm-toggle.tmp']=complete})
+plan=Config.plan(provider,'schema',choices,fs)
+assert(files[base..'.dmm-toggle.tmp']==complete)
+fails(function() Config.commit(plan,fs) end,'.dmm-toggle.tmp and it needs review')
 for _,setting in ipairs(settings) do setting.file='nested/preferences.ini' end
 local nested=Config.plan(provider,'schema',choices,fs)
 assert(nested.path=='Mods/Example/nested/preferences.ini')
