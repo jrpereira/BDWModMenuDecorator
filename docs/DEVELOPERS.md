@@ -91,6 +91,9 @@ succeeds. Raise an error to reject the Apply. Navigation/read-only rows are
 excluded. Numeric Apply events omit text keybinds, so reload your config when
 handling the event, as MCC does.
 
+A page containing only text settings emits no numeric Apply event. Such a page
+needs its own post-save notification from the storage hook to its gameplay state.
+
 Escape cancels capture. Modifier chords, Escape bindings, wheel directions and
 gamepad capture are unsupported.
 

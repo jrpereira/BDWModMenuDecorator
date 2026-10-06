@@ -214,7 +214,10 @@ Existing revisions are not replayed at subscription time: load startup values
 from your config. Unsubscribing stops delivery but does not release the native
 handler/claim; fully restart after script reloads. `values` contains the applied numeric settings (text keybinds are omitted), and
 `changes` contains `{old=...,new=...}` only for changed IDs. Treat the event and
-its nested tables as read-only. Reload your config to read text bindings; the event is not their value transport.
+its nested tables as read-only. Reload your config to read text bindings; the
+event is not their value transport. A page with no numeric stored values emits
+no Apply notification through this API; its storage hook needs a separate
+post-save notification for gameplay consumers.
 Callback failure cannot turn a completed save
 into an Apply failure. Calling the returned function stops delivery to that
 callback.
@@ -409,4 +412,3 @@ all targets to a named preset selects it automatically. Custom cannot be chosen
 directly. Apply and Restore clear the visual baseline.
 Apply and Restore remain DMM operations. Opening an inconsistent saved preset
 preserves its keys and changes the pending picker to Custom.
-
