@@ -732,7 +732,8 @@ assert(#noteRow.parts==3 and noteRow.value.parent~=noteBox,'DMM\'s value keeps i
 -- None has no note: one line, as today.
 assert(noteBox.visible==1 and noteRow.value.Slot.Padding.Bottom==0)
 noteUi.model.pending[1]=7;noteUi:refresh()
-assert(noteBox.visible==3 and noteRow.mcNote.text=='Fangdango' and noteRow.value.Slot.Padding.Bottom==12,
+assert(noteBox.visible==3 and noteRow.mcNote.text=='Fangdango' and noteRow.value.Slot.Padding.Bottom==4
+    and noteBox.Slot.Padding.Bottom==4,
     'a noted choice shows its note without taking clicks, and the value moves up')
 noteUi.model.pending[1]=0;noteUi:refresh()
 assert(noteBox.visible==1 and noteRow.value.Slot.Padding.Bottom==0,'back to one line')

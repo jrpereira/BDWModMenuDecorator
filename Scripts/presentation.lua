@@ -540,7 +540,7 @@ function M.install(choices,controls,pages,options)
                     noteSlot:SetHorizontalAlignment(2);noteSlot:SetVerticalAlignment(2)
                     local slot=add(row.background:GetParent(),box)
                     slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(3)
-                    slot:SetPadding({Left=left,Top=0,Right=0,Bottom=2})
+                    slot:SetPadding({Left=left,Top=0,Right=0,Bottom=4})
                     -- Never in the way of the value button underneath.
                     box:SetVisibility(1)
                     row.mcNote,row.mcNoteBox=note,box
@@ -674,7 +674,7 @@ function M.install(choices,controls,pages,options)
                         row.mcNoteBox:SetVisibility(note and 3 or 1)
                         local padding=row.value.Slot.Padding
                         row.value.Slot:SetPadding({Left=padding.Left,Top=padding.Top,
-                            Right=padding.Right,Bottom=note and 12 or 0})
+                            Right=padding.Right,Bottom=note and 4 or 0})
                         row.mcNoteText=note
                     end
                 end
