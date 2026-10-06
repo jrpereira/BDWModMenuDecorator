@@ -2,6 +2,24 @@
 
 ## v1.0.1
 
+- Keybind rows sharing `mcConflictScope` that bind the same key and trigger
+  show a dim red key background on every edit; the navigation picker separating
+  the two rows shows its choice and arrows in red. Apply is unchanged.
+- Unapplied changes show as a `*` after the page title instead of the
+  "Unapplied changes" status text. Errors and failed Applies still show as text.
+- The dirty `*` follows each label's text, so it no longer overlaps unindented
+  labels such as `mcCategory` rows. Keybind rows now show it when edited.
+- The page status sits beside header tabs under the divider instead of below them.
+- A hooks page whose `load()` returns a value the setting cannot hold keeps the
+  default and logs `HOOK_VALUES_SKIPPED`, instead of breaking the page.
+- A crash during config initialization no longer blocks the page: the next open
+  restores a moved-aside original and removes redundant leftover files.
+- A failure loading the DMM hooks is logged as `DMM_HOOKS_FAILED` with its cause
+  instead of asking for a restart; fatal integration events log at ERROR.
+- An unresolved default control is retried while its keybind row is open, and
+  X and Mode act only when released over the button.
+- Manifests are read by one shared reader that matches DMM, including comment
+  lines in navigation metadata. The undocumented raw `mcHeader` key is ignored.
 - Release packages include `enabled.txt`, so the mod is enabled when installed.
 - `mcType=tab` choices are outlined and sit 4 pixels apart; the selected choice's
   outline is bright.
