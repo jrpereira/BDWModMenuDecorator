@@ -5,6 +5,9 @@
 - Release packages include `enabled.txt`, so the mod is enabled when installed.
 - `mcType=tab` choices are outlined and sit 4 pixels apart; the selected choice's
   outline is bright.
+- A page-link row (`mcNavigation=1`, `mcLinkPage`, `mcType=tab`) wraps a long label
+  within its column and grows to fit, keeping the link button right-aligned and
+  vertically centred; a one-line label keeps the 40-pixel row.
 - `mcWrap=1` shows a read-only value as 13pt text in a wider column, broken after
   commas below 34 characters, in a row that grows to fit.
 - `mcType=cycle` shows a picker as one 13pt button with only the current choice,

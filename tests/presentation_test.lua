@@ -109,6 +109,9 @@ local function widget()
     function w:SetFont(v) self.Font=v end
     function w:SetWidthOverride(v) self.WidthOverride=v end
     function w:SetHeightOverride(v) self.HeightOverride=v end
+    function w:ClearHeightOverride() self.HeightOverride=nil;self.heightCleared=true end
+    function w:SetMinDesiredHeight(v) self.MinDesiredHeight=v end
+    function w:SetAutoWrapText(v) self.AutoWrapText=v end
     function w:SetBrushColor(v) self.BrushColor=v end
     function w:SetRenderTranslation(v) self.RenderTranslation=v end
     return setmetatable(w,{__index=function(_,key)
@@ -275,6 +278,16 @@ assert(#linked.panels[1].rows[1].mcTabs==1
     and linked.panels[1].rows[1].mcTabs[1].label.text=='Consumables'
     and linked.panels[1].rows[1].mcTabs[1].box.WidthOverride==160,
     'page links must display one clickable tab')
+-- A link row's label wraps in its column and the row grows from a 40-pixel minimum.
+local linkRow=linked.panels[1].rows[1]
+assert(linkRow.mcLabel.AutoWrapText==true,'link labels wrap')
+for _,box in ipairs({linkRow.widget:GetParent(),linkRow.wrapper}) do
+    assert(box.heightCleared and box.HeightOverride==nil and box.MinDesiredHeight==40,
+        'link rows grow to fit their label, from a 40-pixel minimum')
+end
+assert(linkRow.widget:GetParent().WidthOverride==584-160-24,'the label column keeps its width')
+assert(not row.mcLabel.AutoWrapText and not row.wrapper.heightCleared,
+    'ordinary tab rows keep a fixed single-line label')
 local linkSet=linked.model.set
 function linked.model:set(index,value)
     if index==1 and value==0 then self.linkActivated=true end

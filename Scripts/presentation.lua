@@ -393,6 +393,14 @@ function M.install(choices,controls,pages,options)
                         referenceSlot:SetPadding({Left=0,Top=0,Right=pickerRightMargin,Bottom=0})
                     end
                     row.widget:GetParent():SetWidthOverride(584-totalWidth-pickerRightMargin)
+                    if providerLink then
+                        -- A link row's label wraps within its column and the row grows to
+                        -- fit; one line keeps DMM's 40-pixel row. The button stays centred.
+                        row.mcLabel:SetAutoWrapText(true)
+                        for _,box in ipairs({row.widget:GetParent(),row.wrapper}) do
+                            box:ClearHeightOverride();box:SetMinDesiredHeight(40)
+                        end
+                    end
                     for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
                 elseif setting.mcCycle then
                     -- One button showing only the current choice; a click moves to the
