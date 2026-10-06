@@ -1,5 +1,8 @@
 package.path='Scripts/?.lua;'..package.path
-local Choices=dofile(assert(os.getenv('DMM_CHOICES_PATH')))
+-- Needs the real DMM parser, which CI does not have; skip without it.
+local choicesPath=os.getenv('DMM_CHOICES_PATH')
+if not choicesPath then print('SKIP menu slots: DMM_CHOICES_PATH is not set');return end
+local Choices=dofile(choicesPath)
 local Navigation=require('navigation')
 local Mapped=require('mapped_presets')
 local Slots=require('menu_slots')

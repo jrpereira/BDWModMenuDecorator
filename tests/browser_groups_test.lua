@@ -33,26 +33,40 @@ assert(Groups.install(pages) and not Groups.install(pages))
 local built=pages.build({},{{id='ModCoreSettings',name='Visuals'}},nil,{})
 assert(#built==2 and built[1].name=='ModCore' and built[2].name=='Visuals')
 
-local filteredPages={build=function(_,items)
-    local page={allRows={},rows={},scroll={ScrollToStart=function() end}}
-    for index in ipairs(items) do page.allRows[index]={providerIndex=index} end
+print('PASS ModCore browser groups Controls, Visuals and module pages')
+
+-- DMM shows each row of its mod list and links its navigation itself.
+local function widget()
+    local w={visibility=0}
+    function w:SetVisibility(v) self.visibility=v end
+    function w:SetNavigationRuleExplicit(rule,target) self['rule'..rule]=target end
+    function w:SetNavigationRuleBase(rule) self['rule'..rule]='base' end
+    return w
+end
+local currentPages={}
+currentPages.build=function(_,items)
+    local page={allRows={},rows={},empty=widget(),scroll={ScrollToStart=function() end}}
+    for index in ipairs(items) do page.allRows[index]={providerIndex=index,wrapper=widget(),widget=widget()} end
     function page:setFilter(compatibleOnly)
         self.compatibleOnly=compatibleOnly
         self.rows={}
         for _,row in ipairs(self.allRows) do
-            if not compatibleOnly or not items[row.providerIndex].noSettings then
-                self.rows[#self.rows+1]=row
-            end
+            local visible=not compatibleOnly or not items[row.providerIndex].noSettings
+            row.wrapper:SetVisibility(visible and 0 or 1)
+            if visible then self.rows[#self.rows+1]=row end
         end
     end
     function page:refreshHint() end
-    function page:window() end
     page:setFilter(true)
     return page
-end}
-Groups.install(filteredPages)
-local filtered=filteredPages.build({},{{id='ModCoreControls',name='Controls'}},nil,{})
-assert(#filtered.rows==2 and filtered.rows[1].providerIndex==1
-    and filtered.rows[2].providerIndex==2)
-
-print('PASS ModCore browser groups Controls, Visuals and module pages')
+end
+assert(Groups.install(currentPages))
+local current=currentPages.build({},{{id='ModCoreControls',name='Controls'},{id='Other',name='Other',noSettings=true}},nil,{})
+local heading,controls,other=current.allRows[1],current.allRows[2],current.allRows[3]
+assert(#current.rows==2 and current.rows[1]==heading and current.rows[2]==controls)
+assert(heading.wrapper.visibility==0 and controls.wrapper.visibility==0 and other.wrapper.visibility==1,
+    'the ModCore heading stays visible beside its pages')
+assert(heading.widget.rule2=='base' and heading.widget.rule3==controls.widget
+    and controls.widget.rule2==heading.widget and controls.widget.rule3=='base')
+assert(current.empty.visibility==1)
+print('PASS compatible-only filtering keeps the ModCore headings visible and linked')

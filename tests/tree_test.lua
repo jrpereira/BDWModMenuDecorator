@@ -91,7 +91,7 @@ print('PASS nested switchers traverse only selected page; paired backing control
 local originalRow=M.rowFromWrapper
 local function marked(index)
  local marker=widget('Marker'..index,'TextBlock')
- function marker:GetText() return table.concat({'MC_SETTING_5',tostring(index),'Provider','Row'..index,'slider','0','254','1','0','','','0','','','','0','','0'},'\n') end
+ function marker:GetText() return table.concat({'MC_SETTING_6',tostring(index),'Provider','Row'..index,'slider','0','254','1','0','','','0'},'\n') end
  local shell=widget('Shell'..index,'Overlay',{marker})
  local wrapper=widget('Wrapper'..index,'SizeBox')
  function wrapper:GetContent() return shell end
@@ -112,13 +112,12 @@ ordered=M.rowsFromScroll(widget('Promoted','ScrollBox',{placeholder,second}))
 assert(ordered[1]==first.row and ordered[2]==second.row,'Promoted headers retain schema identity')
 StaticFindObject=originalFind
 local modern=M.childAt(first:GetContent(),0)
- function modern:GetText() return table.concat({'MC_SETTING_5','1','Provider%25Name','PrimaryX','slider','0','254','1','0','','','1','','PrimaryXMode','220','','1','IA_Combat_ToggleQuickslots','0'},'\n') end
+ function modern:GetText() return table.concat({'MC_SETTING_6','1','Provider%25Name','PrimaryX','picker','','','','','','','2','0','1','Off','On%0A'},'\n') end
 ordered=M.rowsFromScroll(widget('Grouped','ScrollBox',{second,first}))
 assert(ordered[2].identityProviderId=='Provider%Name' and ordered[2].settingId=='PrimaryX')
 assert(ordered[2].settingIndex==1,'DMM index is informational; visual order is retained')
-assert(ordered[2].dmmSetting.mcKeybind and ordered[2].dmmSetting.minimum==0
- and ordered[2].dmmSetting.maximum==254 and ordered[2].dmmSetting.mcPairId=='PrimaryXMode'
- and ordered[2].dmmSetting.mcTabsWidth==220 and ordered[2].dmmSetting.mcOptional
- and ordered[2].dmmSetting.mcDefaultControl=='IA_Combat_ToggleQuickslots')
+local identity=ordered[2].dmmSetting
+assert(identity.kind=='picker' and identity.values[1]==0 and identity.values[2]==1
+ and identity.labels[1]=='Off' and identity.labels[2]=='On\n','values and escaped labels survive the identity')
 M.rowFromWrapper=originalRow
 print('PASS category reordering preserves schema row identity')

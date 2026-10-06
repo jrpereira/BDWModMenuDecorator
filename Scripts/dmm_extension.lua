@@ -1,5 +1,7 @@
--- Loaded by DawnwalkerModMenu's extension loader inside DMM's Lua state.
--- Keep this file self-contained: the ordinary ModCoreSettings mod runs in a different state.
+-- Runs inside DMM's Lua state. The launcher that replaces DMM's main.lua calls
+-- launch() before running DMM's own main, so every hook is on DMM's module tables
+-- before DMM uses them. Keep this file self-contained: the ordinary
+-- ModCoreSettings mod runs in a different state.
 local source=assert(debug.getinfo(1,'S').source,'extension source unavailable')
 local directory=assert(source:match('^@(.+[\\/])[^\\/]+$'),'extension directory unavailable')
 
@@ -11,9 +13,27 @@ local function module(name)
     return value
 end
 
-return {
+-- Events are written at their level; log_level.txt in the mod folder sets it (WARN without it).
+local report=(function()
+    local root=directory:match('^(.*)[/\\]Scripts[/\\]$')
+    local logger=module('mc_log').new({name='ModCoreSettings',path=root and root..'/log_level.txt'})
+    return module('log_events').reporter(logger)
+end)()
+
+local extension
+extension={
     id='ModCoreSettings',
     apiVersion=1,
+    -- Loads DMM's modules ahead of DMM's main, recreates its lifecycle events,
+    -- then installs exactly as before.
+    launch=function()
+        local events=module('dmm_events')
+        local controls=require('controls')
+        local bus=events.bus(report)
+        events.attach({controls=controls,nativeactions=require('nativeactions')},bus,report)
+        extension.install({version=1,choices=require('choices'),controls=controls,
+            pages=require('pages'),events=bus,settingsApi=require('dmm_api')})
+    end,
     install=function(dmm)
         assert(type(dmm)=='table' and dmm.version==1,'unsupported DMM extension API')
         assert(type(dmm.choices)=='table' and type(dmm.controls)=='table' and type(dmm.pages)=='table',
@@ -34,14 +54,17 @@ return {
         assert(type(config.install)=='function','configuration installer unavailable')
         assert(type(dmm.events)=='table' and type(dmm.events.on)=='function','DMM lifecycle events unavailable')
         assert(type(lifecycle.publisher)=='function','lifecycle publisher unavailable')
+        -- Innermost: every other wrapper sees this module's settings among DMM's own.
+        local fieldTypes=module('field_types').new(report)
+        local keybind=module('keybind_editor')
+        fieldTypes:register('keybind',keybind)
+        fieldTypes:install({choices=dmm.choices,controls=dmm.controls,settingsApi=dmm.settingsApi,
+            standardControls=module('standard_controls')})
         navigation.install(dmm.choices)
         mapped.install(dmm.choices,dmm.controls)
-        presentation.install(dmm.choices,dmm.controls,dmm.pages)
-        browserGroups.install(dmm.pages)
+        presentation.install(dmm.choices,dmm.controls,dmm.pages,{keyColumn=keybind.layout})
+        browserGroups.install(dmm.pages,report)
         config.install(dmm.choices)
-        local function report(event,detail)
-            print('[ModCoreSettings] '..event..' '..tostring(detail or '')..'\n')
-        end
         assert(ModRef and type(ModRef.GetSharedVariable)=='function','DMM shared variables unavailable')
         local function read(path)
             local file=assert(io.open(path,'rb'))
@@ -71,3 +94,4 @@ return {
         ModRef:SetSharedVariable('MC_DMM_Extension_v1.ready','1')
     end,
 }
+return extension

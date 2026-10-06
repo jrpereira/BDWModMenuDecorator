@@ -1,6 +1,5 @@
 -- Runs in DMM's Lua state. Uses its existing menu tick and model, never a timer.
 local M={version=1}
-local pairHostMarkerPrefix='MC_PAIR_HOST_1\n'
 local dirtySignalPrefix='MC_VALUE_DIRTY_1\n'
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function identityText(value)
@@ -9,14 +8,10 @@ end
 local function settingIdentity(index,provider,setting)
     local values,labels=setting.values or {},setting.labels or {}
     assert(#values==#labels and #values<=64,'invalid setting identity choices')
-    local fields={'MC_SETTING_5',tostring(index),identityText(provider.id),identityText(setting.id),
+    local fields={'MC_SETTING_6',tostring(index),identityText(provider.id),identityText(setting.id),
         setting.kind or '',tostring(setting.minimum or ''),tostring(setting.maximum or ''),
         tostring(setting.step or ''),tostring(setting.decimals or ''),identityText(setting.prefix or ''),
-        identityText(setting.suffix or ''),setting.mcKeybind and '1' or '0',
-        identityText(setting.mcFixedMode or ''),identityText(setting.mcPairId or ''),
-        tostring(setting.mcTabsWidth or ''),identityText(setting.mcPairTargetId or ''),
-        setting.mcOptional and '1' or '0',identityText(setting.mcDefaultControl or ''),
-        tostring(#values)}
+        identityText(setting.suffix or ''),tostring(#values)}
     for _,value in ipairs(values) do fields[#fields+1]=identityText(value) end
     for _,label in ipairs(labels) do fields[#fields+1]=identityText(label) end
     local result=table.concat(fields,'\n')
@@ -31,6 +26,8 @@ local headerSeparatorDim={R=0.62,G=0.55,B=0.42,A=0.25}
 local headerSeparatorBright={R=0.62,G=0.55,B=0.42,A=0.9}
 local headerGlowOn={R=0.95,G=0.63,B=0.08,A=0.10}
 local headerGlowOff={R=0,G=0,B=0,A=0}
+-- A cycle button's background matches the keybind editor's Mode control.
+local cycleBackground={R=0.12,G=0.12,B=0.12,A=0.09}
 function M.parse(content,items)
     local sections,current={},nil
     for line in (content..'\n'):gmatch('([^\n]*)\n') do
@@ -42,10 +39,7 @@ function M.parse(content,items)
         end
     end
     local byId,groups,parents,seen,count={},{},{},{},0
-    for _,s in ipairs(items) do
-        byId[s.id]=s
-        s.mcPairId,s.mcPairIndex,s.mcPairTargetIndex,s.mcDefaultControl=nil,nil,nil,nil
-    end
+    for _,s in ipairs(items) do byId[s.id]=s end
     local function level(value)
         if value==nil then return nil end
         return assert(tonumber(value:match('^[0-6]$')),'mcLevel must be an integer from 0 through 6')
@@ -104,37 +98,21 @@ function M.parse(content,items)
                 s.mcFont=level(r.mcLevel)
                 s.mcHeading=flag(r.mcHeading,'mcHeading') or false
                 s.mcReadOnly=flag(r.mcReadOnly,'mcReadOnly')
-                s.mcOptional=flag(r.mcOptional,'mcOptional') or false
-                s.mcDefaultControl=r.mcDefaultControl and trim(r.mcDefaultControl) or nil
-                if s.mcDefaultControl=='' then s.mcDefaultControl=nil end
-                s.mcGroupedBy=r.mcGroupedBy
+                s.mcWrap=flag(r.mcWrap,'mcWrap')
+                assert(not s.mcWrap or s.kind=='picker' and r.mcReadOnly=='1','mcWrap requires a read-only picker')
                 s.mcReferenceLabel=r.mcReferenceLabel
-                if r.mcMode~=nil then
-                    assert(r.mcMode=='Tap' or r.mcMode=='Hold','mcMode must be Tap or Hold')
-                    assert(r.mcType=='keybind' and s.kind=='slider','mcMode requires a keybind setting')
-                    s.mcFixedMode=r.mcMode
-                end
                 s.mcLabelRule=labelRule(r)
-                s.mcTabs,s.mcTabsWidth,s.mcHeader,s.mcPairTargetId=nil,nil,nil,nil
+                s.mcTabs,s.mcCycle,s.mcTabsWidth,s.mcHeader=nil,nil,nil,nil
                 local hasLevel=r.mcLevel~=nil
                 local decoration=r.mcType
-                if decoration~=nil then assert(decoration=='tab' or decoration=='keybind','mcType must be tab or keybind') end
-                s.mcKeybind=decoration=='keybind'
-                assert(not s.mcOptional or s.mcKeybind,'mcOptional requires mcType=keybind')
-                assert(not s.mcDefaultControl or s.mcOptional,
-                    'mcDefaultControl requires mcOptional=1')
+                if decoration~=nil then assert(decoration=='tab' or decoration=='cycle','mcType must be tab or cycle') end
                 if decoration=='tab' then
                     assert(s.kind=='picker','mcType=tab requires a picker')
                     assert(#s.values<=8,'mcType=tab supports at most eight choices')
                     s.mcTabs=true
-                end
-                if r.Pair~=nil then
-                    assert(s.kind=='picker' and (decoration==nil or decoration=='tab'),
-                        'Pair requires a picker')
-                    assert(#s.values<=8,'Pair supports at most eight choices')
-                    assert(trim(r.Pair)~='','Pair requires a setting Id')
-                    s.mcPairTargetId=trim(r.Pair)
-                    s.mcTabs=true
+                elseif decoration=='cycle' then
+                    assert(s.kind=='picker','mcType=cycle requires a picker')
+                    s.mcCycle=true
                 end
                 if r.mcTabsWidth~=nil then
                     local width=tonumber(r.mcTabsWidth)
@@ -154,24 +132,30 @@ function M.parse(content,items)
         end
     end
     local headers=0
-    for index,s in ipairs(items) do
+    for _,s in ipairs(items) do
         s.mcGroup=groups[s.group]
-        if s.mcGroupedBy then
-            local source=assert(byId[s.mcGroupedBy],'unknown mcGroupedBy setting')
-            assert(s.mcKeybind and source.mcKeybind,'mcGroupedBy requires keybind settings')
-        end
-        if s.mcPairTargetId then
-            local target=assert(byId[s.mcPairTargetId],'unknown Pair setting')
-            assert(target.kind=='slider' and target.mcKeybind,'Pair target must be an mcType=keybind integer setting')
-            assert(not target.mcPairId,'keybind setting cannot belong to more than one Pair')
-            target.mcPairId=s.id;target.mcPairIndex=index;s.mcPairTargetIndex=nil
-            for i,candidate in ipairs(items) do if candidate==target then s.mcPairTargetIndex=i;break end end
-        end
         if s.mcHeader then headers=headers+1 end
     end
     assert(headers<=1,'only one level-one setting per provider')
     return items
 end
+-- Breaks a comma-separated list into lines shorter than limit characters, each
+-- continued line ending in its comma. Returns the text and its line count.
+function M.wrapList(text,limit)
+    local lines,line={},nil
+    for item in (text..','):gmatch('%s*(.-)%s*,') do
+        if item~='' then
+            if line and #line+2+#item<limit then line=line..', '..item
+            else
+                if line then lines[#lines+1]=line..',' end
+                line=item
+            end
+        end
+    end
+    if line then lines[#lines+1]=line end
+    return table.concat(lines,'\n'),math.max(#lines,1)
+end
+
 function M.style(label,level,api)
     local style=styles[level]
     if not style then return end
@@ -179,8 +163,11 @@ function M.style(label,level,api)
     api.Theme.textColor(label,style[2])
     if level==5 then label:SetRenderOpacity(0.85) end
 end
-function M.install(choices,controls,pages)
+-- options.keyColumn (optional): the keybind editor's layout; cycle buttons align
+-- with its key column, and otherwise sit at the right like tabs.
+function M.install(choices,controls,pages,options)
     if controls.mcPresentationVersion then return false end
+    local keyColumn=options and options.keyColumn
     local parse,build=choices.parse,controls.build
     choices.parse=function(content) return M.parse(content,parse(content)) end
     controls.build=function(tree,providers,api)
@@ -193,15 +180,6 @@ function M.install(choices,controls,pages)
         local ui
         local constructing,pendingHelp,buttonSettingIndex
         for k,v in pairs(api) do adapted[k]=v end
-        adapted.releasePanel=function(panel,provider)
-            -- A Level 1 row was moved outside the evicted ScrollBox.
-            if panel.mcHeader then
-                panel.mcHeader.wrapper:RemoveFromParent()
-                if panel.mcHeader.mcHeaderTabsBox then panel.mcHeader.mcHeaderTabsBox:RemoveFromParent() end
-                panel.mcHeader=nil
-            end
-            if api.releasePanel then api.releasePanel(panel,provider) end
-        end
         adapted.setText=function(widget,value)
             local signal=valueSignals[widget]
             if not signal then return api.setText(widget,value) end
@@ -253,14 +231,6 @@ function M.install(choices,controls,pages)
         end
         ui=build(tree,providers,adapted)
         local prepare,show,refresh,tick,clearPresses,isPressed=ui.prepare,ui.show,ui.refresh,ui.tick,ui.clearPresses,ui.isPressed
-        local function styleBackground(tab,hovered)
-            if not tab.background then return end
-            if tab.backgroundHovered==hovered then return end
-            tab.background:SetBrushColor(hovered
-                and {R=0.95,G=0.63,B=0.08,A=0.22}
-                or {R=0.12,G=0.12,B=0.12,A=0.18})
-            tab.backgroundHovered=hovered
-        end
         local function new(kind) return api.construct('/Script/UMG.'..kind,tree) end
         local function add(parent,child) return api.need(parent:AddChild(child),'KEM presentation child') end
         local function sized(child,width,height)
@@ -270,6 +240,27 @@ function M.install(choices,controls,pages)
             return box
         end
         local pickerRightMargin=24
+        -- Label column of a wrapped read-only row; the value takes the rest.
+        local wrapLabelWidth=230
+        -- Field-type editors are built on DMM's toggle row, whose label sits in the
+        -- row content; its indent belongs on that content's slot, not the label's.
+        local function toggleShell(setting) return setting.kind=='toggle' or setting.kind=='extension' end
+        -- A 1-pixel frame of four bars around a tab choice. The fill stays clear so
+        -- the row's own background shows through.
+        local function outlined(child)
+            local overlay=new('Overlay')
+            local slot=add(overlay,child);slot:SetHorizontalAlignment(0);slot:SetVerticalAlignment(0)
+            local bars={}
+            for _,edge in ipairs({{h=0,v=1},{h=0,v=3},{h=1,v=0},{h=3,v=0}}) do
+                local bar=new('Border');bar:SetBrushColor(headerSeparatorDim)
+                local box=new('SizeBox')
+                if edge.h==0 then box:SetHeightOverride(1) else box:SetWidthOverride(1) end
+                api.need(box:SetContent(bar),'KEM tab outline')
+                local barSlot=add(overlay,box);barSlot:SetHorizontalAlignment(edge.h);barSlot:SetVerticalAlignment(edge.v)
+                bars[#bars+1]=bar
+            end
+            return overlay,bars
+        end
         local function decorate(index)
             local panel=ui.panels[index]
             if panel.mcPresented then return end
@@ -285,16 +276,11 @@ function M.install(choices,controls,pages)
                     add(row.wrapper:GetContent(),marker)
                     valueSignals[row.value]={marker=marker,index=i}
                 end
-                if setting.mcFixedMode then
-                    row.mcModeState=api.caption(tree,'MC_MODE\nfixed')
-                    row.mcModeState:SetVisibility(1)
-                    add(row.wrapper:GetContent(),row.mcModeState)
-                end
                 local level=setting.mcHeading and 1 or setting.mcFont
                 M.style(row.mcLabel,level,api)
                 if level==2 then api.Theme.font(row.mcLabel,api.theme,20) end
                 if level==1 or level==2 then
-                    local slot=setting.kind=='toggle' and row.widget:GetContent().Slot or row.mcLabel.Slot
+                    local slot=toggleShell(setting) and row.widget:GetContent().Slot or row.mcLabel.Slot
                     local padding=slot.Padding
                     slot:SetPadding({Left=0,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom})
                 end
@@ -366,58 +352,29 @@ function M.install(choices,controls,pages)
                     row.mcTabs={}
                     local count=#setting.values
                     local providerLink=setting.mcNavigation and setting.mcLinkPage
-                    local paired=setting.mcPairTargetId~=nil
-                    local disablesKey=paired and count>=3 and setting.values[3]==-1
                     local totalWidth=providerLink and 160 or
-                        ((paired or setting.mcReferenceLabel) and 150 or (setting.mcTabsWidth or math.min(384,110*count)))
-                    local keySpace=paired and 104 or 0
-                    local defaultSpace=paired and 104 or 0
+                        (setting.mcReferenceLabel and 150 or (setting.mcTabsWidth or math.min(384,110*count)))
                     local choices={}
                     for n,value in ipairs(setting.values) do
-                        if (not providerLink or n==1) and (not paired or n~=2 or count<2) then
-                            local choice={value=value,label=setting.labels[n],isDefault=disablesKey and n==3}
-                            if paired and n==1 and count>=2 then
-                                choice.toggleValues={setting.values[1],setting.values[2]}
-                                choice.toggleLabels={setting.labels[1],setting.labels[2]}
-                            end
-                            choices[#choices+1]=choice
-                        end
+                        if not providerLink or n==1 then choices[#choices+1]={value=value,label=setting.labels[n]} end
                     end
-                    local modeCount=#choices-(disablesKey and 1 or 0)
-                    local width=totalWidth/modeCount
-                    if paired and count>=2 then
-                        width=modeCount>1 and (totalWidth/2)/(modeCount-1) or totalWidth/2
-                    end
-                    local defaultTabs=disablesKey and new('HorizontalBox') or nil
-                    if paired then row.mcTabsBackgrounds={} end
-                    for _,choice in ipairs(choices) do
+                    -- Outlined choices sit 4 pixels apart within the reserved width.
+                    local width=(totalWidth-4*(#choices-1))/#choices
+                    for n,choice in ipairs(choices) do
                         local button,label=api.button(tree,choice.label);button.IsFocusable=false
                         label:SetJustification(1);label:SetTextOverflowPolicy(1)
                         -- Stretch the text block across the fixed-width button, then
                         -- let centered text justification position its contents.
                         label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
-                        local isDefault=choice.isDefault
-                        local visible=button
-                        local background
-                        if paired then
-                            background=new('Border')
-                            background:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.18})
-                            api.need(background:SetContent(button),'KEM paired tab background')
-                            row.mcTabsBackgrounds[#row.mcTabsBackgrounds+1]=background
-                            visible=background
-                        end
-                        local choiceWidth=choice.toggleValues and totalWidth/2 or width
-                        local choiceHeight=choice.toggleValues and 32 or 40
-                        add(isDefault and defaultTabs or tabs,
-                            sized(visible,isDefault and 96 or choiceWidth,choiceHeight))
-                        row.mcTabs[#row.mcTabs+1]={widget=button,label=label,value=choice.value,
-                            toggleValues=choice.toggleValues,toggleLabels=choice.toggleLabels,
-                            pressed=false,pointer=false,background=background}
+                        local frame,outline=outlined(button)
+                        local box=sized(frame,width,32)
+                        local boxSlot=add(tabs,box)
+                        boxSlot:SetVerticalAlignment(2)
+                        if n>1 then boxSlot:SetPadding({Left=4,Top=0,Right=0,Bottom=0}) end
+                        row.mcTabs[#row.mcTabs+1]={widget=button,label=label,value=choice.value,pressed=false,pointer=false,
+                            box=box,outline=outline}
                     end
                     local overlay=row.background:GetParent()
-                    if paired and count>=2 and modeCount==1 then
-                        tabs:SetRenderTranslation({X=-totalWidth/2,Y=0})
-                    end
                     local slot=add(overlay,tabs);slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(2)
                     slot:SetPadding({Left=0,Top=0,Right=pickerRightMargin,Bottom=0})
                     if setting.mcReadOnly and setting.mcReferenceLabel then
@@ -430,30 +387,53 @@ function M.install(choices,controls,pages)
                         referenceSlot:SetHorizontalAlignment(3);referenceSlot:SetVerticalAlignment(2)
                         referenceSlot:SetPadding({Left=0,Top=0,Right=pickerRightMargin,Bottom=0})
                     end
-                    row.mcModeTabs=paired and tabs or nil
-                    row.mcModeDefaultTabs=paired and defaultTabs or nil
-                    if paired then row.mcTabsBackground=row.mcTabsBackgrounds[1] end
-                    if defaultTabs then
-                        defaultTabs:SetRenderTranslation({X=-(totalWidth+8+96+8),Y=0})
-                        row.mcDefaultBackground=defaultTabs
-                        local defaultSlot=add(overlay,defaultTabs)
-                        defaultSlot:SetHorizontalAlignment(3);defaultSlot:SetVerticalAlignment(2)
-                        defaultSlot:SetPadding({Left=0,Top=0,Right=pickerRightMargin,Bottom=0})
-                    end
-                    row.widget:GetParent():SetWidthOverride(584-totalWidth-keySpace-defaultSpace-pickerRightMargin)
-                    if paired then
-                        local hostBox=new('SizeBox');hostBox:SetWidthOverride(96);hostBox:SetHeightOverride(32)
-                        local host=new('Overlay');api.need(hostBox:SetContent(host),'KEM pair host content')
-                        local marker=api.caption(tree,pairHostMarkerPrefix..setting.mcPairTargetId)
-                        marker:SetVisibility(1);add(host,marker)
-                        hostBox:SetRenderTranslation({X=-(totalWidth+8),Y=0})
-                        local hostSlot=add(overlay,hostBox);hostSlot:SetHorizontalAlignment(3);hostSlot:SetVerticalAlignment(2)
-                        hostSlot:SetPadding({Left=0,Top=0,Right=pickerRightMargin,Bottom=0})
-                        row.mcPairHost,row.mcPairHostBox,row.mcTabsWidth,row.mcPairDisablesKey=
-                            host,hostBox,totalWidth,disablesKey
-                        panel.rows[setting.mcPairTargetIndex].mcPairOwner=i
-                    end
+                    row.widget:GetParent():SetWidthOverride(584-totalWidth-pickerRightMargin)
                     for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
+                elseif setting.mcCycle then
+                    -- One button showing only the current choice; a click moves to the
+                    -- next, like the keybind editor's Mode. It sits in the key column,
+                    -- under the keys, at the key box's width.
+                    local width=keyColumn and keyColumn.key or 96
+                    local button,label=api.button(tree,'');button.IsFocusable=false
+                    api.Theme.font(label,api.theme,13)
+                    label:SetJustification(1);label:SetTextOverflowPolicy(1)
+                    label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
+                    local frame=new('Border');frame:SetBrushColor(cycleBackground)
+                    api.need(frame:SetContent(button),'KEM cycle frame')
+                    local box=sized(frame,width,32)
+                    local overlay=row.background:GetParent()
+                    local slot=add(overlay,box);slot:SetVerticalAlignment(2)
+                    if keyColumn then
+                        slot:SetHorizontalAlignment(1)
+                        row.mcCyclePlace=function(indent)
+                            slot:SetPadding({Left=indent+keyColumn.keyOffset,Top=0,Right=0,Bottom=0})
+                        end
+                        row.mcCyclePlace(20+(rowButtonInset[row.widget] or 0))
+                        row.widget:GetParent():SetWidthOverride(keyColumn.keyOffset)
+                    else
+                        slot:SetHorizontalAlignment(3)
+                        slot:SetPadding({Left=0,Top=0,Right=pickerRightMargin,Bottom=0})
+                        row.widget:GetParent():SetWidthOverride(584-width-pickerRightMargin)
+                    end
+                    row.mcTabs={{widget=button,label=label,value=setting.values[1],pressed=false,pointer=false,
+                        cycle=true,box=box}}
+                    for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
+                elseif setting.mcWrap then
+                    -- A read-only value too long for DMM's picker: 13pt text in a wider
+                    -- column, broken at commas below 34 characters; the row grows to fit.
+                    local text,lines=M.wrapList(setting.labels[1] or '',34)
+                    local value=api.caption(tree,text)
+                    api.Theme.font(value,api.theme,13)
+                    value:SetJustification(0);value:SetAutoWrapText(true)
+                    local box=new('SizeBox');box:SetWidthOverride(584-wrapLabelWidth-pickerRightMargin)
+                    api.need(box:SetContent(value),'KEM wrapped value')
+                    local overlay=row.background:GetParent()
+                    local slot=add(overlay,box);slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(2)
+                    slot:SetPadding({Left=0,Top=0,Right=pickerRightMargin,Bottom=0})
+                    row.widget:GetParent():SetWidthOverride(wrapLabelWidth)
+                    row.wrapper:SetHeightOverride(math.max(40,lines*18+12))
+                    for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
+                    row.mcWrapped=value
                 end
             end
             local parentWidgets={}
@@ -562,31 +542,8 @@ function M.install(choices,controls,pages)
                 end
             end
             local pageReady=false
-            local logicalVisibility
             for i,row in ipairs(self.panels[self.active].rows) do
                 local setting=self.model.items[i]
-                if setting.mcPairTargetIndex then
-                    local keyIndex=setting.mcPairTargetIndex
-                    local keySetting=self.model.items[keyIndex]
-                    local optionalUnbound=keySetting.mcOptional and (tonumber(self.model.pending[keyIndex]) or 0)==0
-                    row.mcOptionalModeHidden=optionalUnbound or false
-                    if row.mcModeTabs then row.mcModeTabs:SetVisibility(optionalUnbound and 1 or 0) end
-                    if row.mcModeDefaultTabs then row.mcModeDefaultTabs:SetVisibility(optionalUnbound and 1 or 0) end
-                    logicalVisibility=logicalVisibility or self.model:visibility()
-                    local keyVisible=logicalVisibility[keyIndex]==true
-                    row.mcPairHostBox:SetVisibility(keyVisible and 0 or 1)
-                    row.widget:GetParent():SetWidthOverride(584-row.mcTabsWidth-(keyVisible and 104 or 0)-pickerRightMargin)
-                    self.panels[self.active].rows[setting.mcPairTargetIndex].wrapper:SetVisibility(1)
-                end
-                if row.mcModeState then
-                    logicalVisibility=logicalVisibility or self.model:visibility()
-                    local target=setting.mcPairIndex
-                    local editable=target and logicalVisibility[target]==true or false
-                    if row.mcModeEditable~=editable then
-                        api.setText(row.mcModeState,'MC_MODE\n'..(editable and 'editable' or 'fixed'))
-                        row.mcModeEditable=editable
-                    end
-                end
                 if row.mcHeader then row.wrapper:SetVisibility(row.visible and 0 or 1) end
                 if row.mcHeaderTabsBox then row.mcHeaderTabsBox:SetVisibility(row.visible and 0 or 1) end
                 if setting.mcLabelRule then
@@ -594,20 +551,23 @@ function M.install(choices,controls,pages)
                     if text~=row.mcLabelText then api.setText(row.mcLabel,text);row.mcLabelText=text end
                 end
                 for _,tab in ipairs(row.mcTabs or {}) do
-                    local mapping=self.model.items[i].mcMapping
-                    local enabled=not row.mcOptionalModeHidden and not setting.mcReadOnly and not self.model.error and (not mapping or tab.value~=mapping.custom)
-                    local current=self.model.pending[i]
-                    local selected=tab.toggleValues and
-                        (current==tab.toggleValues[1] or current==tab.toggleValues[2]) or current==tab.value
-                    if tab.toggleValues then
-                        local display=current==tab.toggleValues[2] and tab.toggleLabels[2] or tab.toggleLabels[1]
-                        if tab.display~=display then api.setText(tab.label,display);tab.display=display end
-                        styleBackground(tab,tab.hovered==true)
+                    if tab.cycle then
+                        local current,shown=self.model.pending[i],1
+                        for n,value in ipairs(setting.values) do if value==current then shown=n end end
+                        if tab.shown~=shown then api.setText(tab.label,setting.labels[shown]);tab.shown=shown end
+                        tab.value=setting.values[shown%#setting.values+1]
                     end
+                    local mapping=self.model.items[i].mcMapping
+                    local enabled=not setting.mcReadOnly and not self.model.error and (not mapping or tab.value~=mapping.custom)
+                    local current=self.model.pending[i]
+                    local selected=current==tab.value
                     if tab.selected~=selected or tab.enabled~=enabled then
                         api.Theme.textColor(tab.label,selected and 'menuActive' or 'body')
                         tab.widget:SetIsEnabled(enabled)
                         tab.widget:SetRenderOpacity((enabled or selected) and 1 or 0.45)
+                        for _,bar in ipairs(tab.outline or {}) do
+                            bar:SetBrushColor(selected and headerSeparatorBright or headerSeparatorDim)
+                        end
                         tab.selected,tab.enabled=selected,enabled
                     end
                     if not row.visible or not enabled then tab.pressed,tab.pointer=false,false end
@@ -727,10 +687,11 @@ function M.install(choices,controls,pages)
                             api.Theme.textColor(row.mcLabel,beforeCategory and 'muted' or 'body')
                             row.mcCategoryStyle=beforeCategory
                         end
-                        local labelSlot=setting.kind=='toggle' and row.widget:GetContent().Slot
+                        local labelSlot=toggleShell(setting) and row.widget:GetContent().Slot
                             or row.mcLabel.Slot
                         local labelPadding=labelSlot.Padding
                         local indent=beforeCategory and 0 or 20+(rowButtonInset[row.widget] or 0)
+                        if row.mcCyclePlace then row.mcCyclePlace(indent) end
                         if labelPadding.Left~=indent then
                             labelSlot:SetPadding({Left=indent,Top=labelPadding.Top,
                                 Right=labelPadding.Right,Bottom=labelPadding.Bottom})
@@ -759,11 +720,11 @@ function M.install(choices,controls,pages)
                 if self.visibleRows then
                     local visible={}
                     -- Header controls precede scroll content for navigation.
-                    for i,row in ipairs(panel.rows) do if row.mcHeader and row.visible and not row.mcPairOwner then visible[#visible+1]=i end end
+                    for i,row in ipairs(panel.rows) do if row.mcHeader and row.visible then visible[#visible+1]=i end end
                     for _,block in ipairs(panel.mcOrderedBlocks or panel.mcBlocks) do
                         if block.heading then
                             for i=block.heading.first,block.heading.last do
-                                if panel.rows[i].visible and not panel.rows[i].mcHeader and not panel.rows[i].mcPairOwner then visible[#visible+1]=i end
+                                if panel.rows[i].visible and not panel.rows[i].mcHeader then visible[#visible+1]=i end
                             end
                         end
                     end
@@ -773,7 +734,7 @@ function M.install(choices,controls,pages)
             if self.visibleRows and not panel.mcBlocks then
                 local navigation={}
                 for i,row in ipairs(panel.rows) do
-                    if row.visible and not row.mcPairOwner then navigation[#navigation+1]=i end
+                    if row.visible then navigation[#navigation+1]=i end
                 end
                 self.visibleRows=navigation;self:wireNavigation(self.footer)
             end
@@ -810,20 +771,12 @@ function M.install(choices,controls,pages)
                                 row.lastValue=value
                             end
                         end
-                        for _,tab in ipairs(row.mcTabs or {}) do
-                            tab.hovered=not row.mcOptionalModeHidden and tab.widget:IsHovered()==true
-                            styleBackground(tab,tab.hovered)
-                        end
+                        for _,tab in ipairs(row.mcTabs or {}) do tab.hovered=tab.widget:IsHovered()==true end
                         for _,tab in ipairs(row.mcTabs or {}) do
                             local clicked
                             clicked,tab.pressed,tab.pointer=released(tab.widget,tab.pressed,tab.pointer,tab.hovered)
                             if clicked and tab.enabled then
-                                local value=tab.value
-                                if tab.toggleValues then
-                                    value=self.model.pending[i]==tab.toggleValues[1]
-                                        and tab.toggleValues[2] or tab.toggleValues[1]
-                                end
-                                self:select(i,false);self.model:set(i,value);self:refresh()
+                                self:select(i,false);self.model:set(i,tab.value);self:refresh()
                                 if api.feedback then api.feedback('Change') end
                                 return tick(self,queued,released,controller)
                             end
@@ -938,15 +891,7 @@ function M.install(choices,controls,pages)
                     end
                 end
             end
-            styleBrowserRows(page.mounted or page.allRows)
-            if type(page.window)=='function' then
-                local window=page.window
-                function page:window(...)
-                    local changed=window(self,...)
-                    if changed then styleBrowserRows(self.mounted) end
-                    return changed
-                end
-            end
+            styleBrowserRows(page.allRows)
             page.controls.mcHeaderHost=host
             page.controls.mcHeaderTitle=title
             page.controls.mcHeaderTabs=strip

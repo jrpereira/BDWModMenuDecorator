@@ -1,12 +1,10 @@
-local VERSION='0.3.1'
+local VERSION='1.0.1'
 local Bootstrap=require('dmm_bootstrap')
-local function log(event,detail)
-    if event=='SELECTOR_DISABLED' or event=='DMM_REQUIRED' or event=='DMM_INCOMPATIBLE'
-        or event=='DMM_RESTART_REQUIRED' or event=='DMM_DUPLICATE_INIT' or event=='DMM_PATCHED'
-        or event:find('FAILED',1,true) or event:find('UNAVAILABLE',1,true) or event:find('EXCEPTION',1,true) then
-        print(string.format('[ModCoreSettings] %s %s\n',event,detail or ''))
-    end
-end
+-- The level comes from log_level.txt in the mod folder; WARN without it.
+local source=debug.getinfo(1,'S').source:gsub('^@','')
+local root=source:match('^(.*)[/\\]Scripts[/\\][^/\\]+$')
+local logger=require('mc_log').new({name='ModCoreSettings',path=root and root..'/log_level.txt'})
+local log=require('log_events').reporter(logger)
 local initialized=false
 local function initialize()
     if initialized then return true end
@@ -14,7 +12,7 @@ local function initialize()
     local ok,err=Binding.install(log)
     if not ok then log('DMM_BINDING_UNAVAILABLE',tostring(err));return false end
     initialized=true
-    print('[ModCoreSettings] '..VERSION..' ready\n')
+    logger.info(VERSION,' ready')
     return true
 end
 Bootstrap.run(log,initialize)

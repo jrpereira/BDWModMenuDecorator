@@ -26,17 +26,22 @@ class PackageTests(unittest.TestCase):
             with ZipFile(archive) as bundle:
                 names = bundle.namelist()
                 self.assertIn(pack.MODULE + '/Scripts/main.lua', names)
-                self.assertNotIn(pack.MODULE + '/enabled.txt', names)
+                # Every package ships enabled by default.
+                self.assertIn(pack.MODULE + '/enabled.txt', names)
                 self.assertNotIn(pack.MODULE + '/Scripts/temporary_probe.lua', names)
-                self.assertEqual(len([n for n in names if '/Scripts/' in n]), 22)
-                self.assertIn('_ModCore_1_Settings/Scripts/dmm_extension.lua', names)
-                self.assertIn('_ModCore_1_Settings/Scripts/navigation.lua', names)
-                self.assertIn('_ModCore_1_Settings/Scripts/browser_groups.lua', names)
-                self.assertIn('_ModCore_1_Settings/mod_settings.ini', names)
+                self.assertEqual(len([n for n in names if '/Scripts/' in n]), 25)
+                self.assertIn('1_ModCore_Settings/Scripts/dmm_extension.lua', names)
+                self.assertIn('1_ModCore_Settings/Scripts/navigation.lua', names)
+                self.assertIn('1_ModCore_Settings/Scripts/browser_groups.lua', names)
+                self.assertIn('1_ModCore_Settings/mod_settings.ini', names)
+                # Documents in docs/ are published at the module root.
+                for doc in ('README.md', 'CHANGELOG.md', 'BUILD.md', 'DEVELOPERS.md'):
+                    self.assertIn('1_ModCore_Settings/' + doc, names)
+                self.assertFalse(any('/docs/' in n for n in names))
                 self.assertFalse(any('/dlls/' in n or n.lower().endswith('.dll') for n in names))
-                self.assertIn('_ModCore_1_Settings/Scripts/dirty_labels.lua', names)
-                self.assertIn('_ModCore_1_Settings/Scripts/init_config.lua', names)
-                self.assertIn('_ModCore_1_Settings/Scripts/settings_api.lua', names)
+                self.assertIn('1_ModCore_Settings/Scripts/dirty_labels.lua', names)
+                self.assertIn('1_ModCore_Settings/Scripts/init_config.lua', names)
+                self.assertIn('1_ModCore_Settings/Scripts/settings_api.lua', names)
                 self.assertFalse(any(n.endswith('/config.ini') or n.endswith('.dmp') or '/tests/' in n for n in names))
                 if pack.MODULE == 'QuickslotsForever':
                     self.assertEqual(bundle.read(pack.MODULE + '/config.example.ini'), (root / 'distribution/config.ini').read_bytes())

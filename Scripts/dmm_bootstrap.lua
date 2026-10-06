@@ -1,165 +1,75 @@
--- DawnwalkerModMenu compatibility bootstrap.
--- Keep discovery, compatibility checks, backup, patch, rollback and readiness
--- gating in this file so the integration transaction has one owner.
-local M={version=1}
+-- DawnwalkerModMenu integration bootstrap.
+-- DMM is never edited. Its own main.lua is kept as main.dmm.lua and replaced by a
+-- small launcher that lets ModCoreSettings hook DMM's modules from inside DMM's
+-- Lua state, then always runs DMM's own main. This file installs and maintains
+-- that launcher and waits for the hooks' readiness handshake.
+local M={version=2}
 
 local READY='MC_DMM_Extension_v1.ready'
 local CLAIM='MC_DMM_Bootstrap_v1.initialized'
--- This identifies the DMM 1.0.7 patch format already installed on existing systems.
-local PATCH_MARKER='-- AMM_DMM_LIFECYCLE_PATCH=1'
-local BACKUP_SUFFIX='.amm-1.0.7.bak'
-local NEW_SUFFIX='.amm-new'
+local MARK='-- ModCoreSettings DMM launcher'
+local FORMAT=2
+local ORIGINAL='main.dmm.lua'
+local STAGE='main.lua.mcs-new'
 local MAX_FILE=262144
 
-local EVENT_PAYLOAD=[=[-- Synchronous, startup-installed callbacks for extensions that need DMM-owned
--- lifecycle boundaries. A failed extension callback is logged and isolated.
-local M={version=1}
-local names={providerPrepared=true,providerRefreshed=true,hostClosing=true}
+-- Splits a path into its folder names.
+local function components(path)
+    local parts={}
+    for part in path:gmatch('[^/\\]+') do parts[#parts+1]=part end
+    return parts
+end
 
-function M.new(report)
-    report=report or function() end
-    local bus={handlers={}}
-    function bus:on(name,callback)
-        assert(names[name],'unsupported extension event')
-        assert(type(callback)=='function','extension event callback must be a function')
-        local handlers=self.handlers[name]
-        if not handlers then handlers={};self.handlers[name]=handlers end
-        assert(#handlers<32,'extension event handler limit exceeded')
-        handlers[#handlers+1]=callback
-        local active=true
-        return function()
-            if not active then return end
-            active=false
-            for i,value in ipairs(handlers) do
-                if value==callback then table.remove(handlers,i);break end
-            end
-        end
+-- Path of `to` as seen from the directory `from`, or nil when they share no root
+-- (another drive). Both end in a separator.
+local function relative(from,to)
+    local a,b=components(from),components(to)
+    local shared=0
+    while shared<#a and shared<#b and a[shared+1]:lower()==b[shared+1]:lower() do shared=shared+1 end
+    if shared==0 then return nil end
+    local out={}
+    for _=shared+1,#a do out[#out+1]='..' end
+    for i=shared+1,#b do out[#out+1]=b[i] end
+    return table.concat(out,'/')..(#out>0 and '/' or '')
+end
+
+-- The launcher holds no logic of its own: updating ModCoreSettings never needs to
+-- touch DMM's folder unless the folder layout or this format changes. Paths are
+-- relative to the launcher's own folder, so moving the game or Mods folder keeps
+-- it valid; a layout on another drive falls back to absolute paths.
+local function launcher(dmmScripts,mcsScripts)
+    local root=assert(mcsScripts:match('^(.*[/\\])[^/\\]+[/\\]$'),'ModCoreSettings folder unavailable')
+    local toScripts,toRoot=relative(dmmScripts,mcsScripts),relative(dmmScripts,root)
+    local lines={
+        '-- Shoutout to DMM\'s author, this launcher allows us to extend DMM with additional',
+        '-- types (like key editor), while establishing it as a required module, thus preserving',
+        '-- and respecting the integrity of DMM as an independant module.',
+        '--',
+        '-- Thanks for all the hard work! :D',
+        '--',
+        MARK..' '..FORMAT,
+        "-- Written by ModCoreSettings. DawnwalkerModMenu's own main.lua is "..ORIGINAL..'. It always',
+        '-- runs below; ModCoreSettings only hooks in first while it is installed and enabled.',
+    }
+    local function add(text) lines[#lines+1]=text end
+    local function path(relativePath,absolutePath,name)
+        if relativePath then return 'here..'..string.format('%q',relativePath..name) end
+        return string.format('%q',absolutePath..name)
     end
-    function bus:emit(name,context)
-        assert(names[name],'unsupported extension event')
-        for _,callback in ipairs(self.handlers[name] or {}) do
-            local ok,err=pcall(callback,context)
-            if not ok then report('EXTENSION_EVENT_FAILED',name..': '..tostring(err)) end
-        end
-    end
-    return bus
+    add("local here=debug.getinfo(1,'S').source:match('^@?(.*[/\\\\])[^/\\\\]+$') or ''")
+    add('local enabled=io.open('..path(toRoot,root,'enabled.txt')..",'rb')")
+    add('if enabled then')
+    add('    enabled:close()')
+    add('    local ok,err=pcall(function()')
+    add('        local chunk=assert(loadfile('..path(toScripts,mcsScripts,'dmm_extension.lua')..'))')
+    add('        chunk().launch()')
+    add('    end)')
+    add("    if not ok then print('[ModCoreSettings] DMM hooks failed: '..tostring(err)..'\\n') end")
+    add('end')
+    add('dofile(here..'..string.format('%q',ORIGINAL)..')')
+    add('')
+    return table.concat(lines,'\n')
 end
-
-return M
-]=]
-
-local supported={
-    ['main.lua']={length=38752,a=20533,b=34583,h=823464120},
-    ['controls.lua']={length=24704,a=45341,b=45889,h=1849011022},
-    ['pages.lua']={length=11799,a=44920,b=14770,h=2559550986},
-}
-local lazySupported={
-    ['main.lua']={length=39593,a=23822,b=19576,h=2394120226},
-    ['controls.lua']={length=25850,a=1045,b=60916,h=3531278216},
-    ['pages.lua']={length=14193,a=39320,b=23532,h=3948583133},
-}
-local lazyPatched={
-    ['main.lua']={length=40030,a=63298,b=25842,h=2857163126},
-    ['controls.lua']={length=26452,a=53465,b=30290,h=614885388},
-    ['pages.lua']={length=14211,a=41107,b=47065,h=2704855608},
-}
-local patched={
-    ['main.lua']={length=39049,a=47247,b=18334,h=1315845458},
-    ['controls.lua']={length=24993,a=4755,b=1545,h=846892309},
-    ['pages.lua']={length=11817,a=46707,b=57684,h=4136752645},
-}
-
-local function signature(content)
-    local a,b,h=1,0,5381
-    for i=1,#content do
-        local byte=content:byte(i)
-        a=(a+byte)%65521
-        b=(b+a)%65521
-        h=(h*33+byte)%4294967296
-    end
-    return {length=#content,a=a,b=b,h=h}
-end
-
-local function sameSignature(content,expected)
-    local got=signature(content)
-    return got.length==expected.length and got.a==expected.a and got.b==expected.b and got.h==expected.h
-end
-
-local function replaceOnce(content,before,after,label)
-    local first,last=content:find(before,1,true)
-    assert(first,label..' anchor unavailable')
-    assert(not content:find(before,last+1,true),label..' anchor is ambiguous')
-    return content:sub(1,first-1)..after..content:sub(last+1)
-end
-local function crlf(value) return (value:gsub('\n','\r\n')) end
-
-local function patchMain(content)
-    content=replaceOnce(content,
-        'local Extensions = require("extensions")\nExtensions.load(IterateGameDirectories,{version=1,choices=require("choices"),controls=require("controls"),pages=Pages},log)',
-        'local Extensions = require("extensions")\n'..PATCH_MARKER..'\nlocal ExtensionEvents = require("extension_events")\nlocal extensionEvents = ExtensionEvents.new(log)\nExtensions.load(IterateGameDirectories,{version=1,choices=require("choices"),controls=require("controls"),pages=Pages,events=extensionEvents},log)',
-        'main extension API')
-    content=replaceOnce(content,
-        crlf('    s.phase = "closing"\n    clearPresses()'),
-        crlf('    s.phase = "closing"\n    extensionEvents:emit("hostClosing",{host=s.host,tree=valid(s.host) and s.host.WidgetTree or nil,pc=s.pc})\n    clearPresses()'),
-        'host close')
-    content=replaceOnce(content,
-        crlf('        highlight=function(widget,alpha,background) s.fx:highlight(widget,alpha,background) end,\n    })'),
-        crlf('        highlight=function(widget,alpha,background) s.fx:highlight(widget,alpha,background) end,\n        events=extensionEvents,\n    })'),
-        'page event API')
-    return content
-end
-
-local function patchControls(content)
-    content=replaceOnce(content,
-        crlf('        panel.built=true\n    end'),
-        crlf("        panel.built=true\n        if api.events then api.events:emit('providerPrepared',{tree=tree,provider=provider,panel=panel,pc=api.pc}) end\n    end"),
-        'provider preparation')
-    content=replaceOnce(content,
-        crlf('        api.status(model.error or (dirty and T("Unapplied changes") or ""))\n    end'),
-        crlf("        api.status(model.error or (dirty and T(\"Unapplied changes\") or \"\"))\n        if changed and api.events then\n            api.events:emit('providerRefreshed',{tree=tree,provider=providers[self.active],panel=panel,pc=api.pc})\n        end\n    end"),
-        'provider refresh')
-    return content
-end
-
-local function patchPages(content)
-    content=replaceOnce(content,
-        '        status=controlStatus,t=T,applied=api.applied,\n',
-        '        status=controlStatus,t=T,applied=api.applied,events=api.events,\n',
-        'controls event API')
-    return content
-end
-
-local patchers={['main.lua']=patchMain,['controls.lua']=patchControls,['pages.lua']=patchPages}
-
--- The later 1.0.7 build uses lazy providers and a recycled browser row pool.
--- Match exact reviewed bytes; never patch an arbitrary file by anchors alone.
-local function patchLazyMain(content)
-    content=replaceOnce(content,crlf('local function valid(object)\n'),crlf(
-        '-- MC_DMM_LIFECYCLE_PATCH=2\n'
-        ..'local ExtensionEvents = require("extension_events")\n'
-        ..'local extensionEvents = ExtensionEvents.new(log)\n'
-        ..'require("extensions").load(IterateGameDirectories,{version=1,choices=require("choices"),controls=require("controls"),pages=Pages,events=extensionEvents},log)\n\n'
-        ..'local function valid(object)\n'),'lazy extension API')
-    content=replaceOnce(content,crlf('    s.phase = "closing"\n    clearPresses()'),
-        crlf('    s.phase = "closing"\n    extensionEvents:emit("hostClosing",{host=s.host,tree=valid(s.host) and s.host.WidgetTree or nil,pc=s.pc})\n    clearPresses()'),'lazy host close')
-    return replaceOnce(content,
-        crlf('        highlight=function(widget,alpha,background) s.fx:highlight(widget,alpha,background) end,\n    })'),
-        crlf('        highlight=function(widget,alpha,background) s.fx:highlight(widget,alpha,background) end,\n        events=extensionEvents,\n    })'),'lazy page event API')
-end
-local function patchLazyControls(content)
-    content=patchControls(content)
-    content=replaceOnce(content,crlf('                local old=ui.panels[oldest]\n'),
-        crlf('                local old=ui.panels[oldest]\n                if api.releasePanel then api.releasePanel(old,providers[oldest]) end\n'),'lazy panel release')
-    content=replaceOnce(content,crlf('        self.panels[index].scroll:ScrollToStart()\n        self:refresh()\n'),
-        crlf("        self.panels[index].scroll:ScrollToStart()\n        self:refresh()\n        if api.events then api.events:emit('providerRefreshed',{tree=tree,provider=providers[index],panel=self.panels[index],pc=api.pc}) end\n"),'lazy page activation')
-    return replaceOnce(content,crlf('    function ui:hide()\n'),
-        crlf("    function ui:hide()\n        if api.events then api.events:emit('hostClosing',{tree=tree,pc=api.pc}) end\n"),'lazy interaction close')
-end
-local function patchLazyPages(content)
-    return replaceOnce(content,crlf('        status=controlStatus,t=T,applied=api.applied,\n'),
-        crlf('        status=controlStatus,t=T,applied=api.applied,events=api.events,\n'),'lazy controls event API')
-end
-local lazyPatchers={['main.lua']=patchLazyMain,['controls.lua']=patchLazyControls,['pages.lua']=patchLazyPages}
 
 local function child(node,wanted)
     if type(node)~='table' then return nil end
@@ -199,24 +109,18 @@ local function runtime()
         if not written or not closed then return nil,why or closeError or 'write failed' end
         return true
     end
+    local source=debug.getinfo(1,'S').source:gsub('^@','')
     return {
         directories=IterateGameDirectories,read=read,write=write,remove=os.remove,rename=os.rename,
+        scripts=source:match('^(.*[/\\])[^/\\]+$'),
         get=function(key) return ModRef and ModRef:GetSharedVariable(key) end,
         set=function(key,value) assert(ModRef,'ModRef unavailable');ModRef:SetSharedVariable(key,value) end,
         defer=ExecuteInGameThread,
     }
 end
 
-local function directories(env)
-    local ok,value=pcall(env.directories)
-    if not ok then return nil,'game directories unavailable: '..tostring(value) end
-    return value
-end
-
-local function locate(env,gameDirectories)
-    local mods=modsRoot(gameDirectories)
-    local dmm=child(mods,'DawnwalkerModMenu')
-    local scripts=child(dmm,'Scripts')
+local function locate(gameDirectories)
+    local scripts=child(child(modsRoot(gameDirectories),'DawnwalkerModMenu'),'Scripts')
     if not scripts then return nil,'DawnwalkerModMenu is not installed' end
     local directory
     for _,entry in pairs(scripts.__files or {}) do
@@ -229,170 +133,51 @@ local function locate(env,gameDirectories)
         end
     end
     if not directory then return nil,'DawnwalkerModMenu Scripts directory is empty' end
-    local paths={}
-    for _,name in ipairs({'main.lua','controls.lua','pages.lua'}) do paths[name]=directory..name end
-    paths['extension_events.lua']=directory..'extension_events.lua'
-    return paths
+    return directory
 end
 
-local function readRequired(env,path)
-    local content,err=env.read(path)
-    assert(content,err or 'read failed')
-    return content
-end
-
-local function selectProfile(env,paths)
-    if env.supported then return end -- Explicit fixture/profile supplied by caller.
-    local profiles={
-        {name='1.0.7 lazy pages',supported=lazySupported,patched=lazyPatched,
-            patchers=lazyPatchers,backupSuffix='.mc-lazy-1.0.7.bak'},
-        {name='1.0.7',supported=supported,patched=patched,patchers=patchers,backupSuffix=BACKUP_SUFFIX},
-    }
-    for _,profile in ipairs(profiles) do
-        local matched=next(profile.supported)~=nil
-        for name,expected in pairs(profile.supported) do
-            local content=env.read(paths[name])
-            if content then
-                if not sameSignature(content,expected) and not sameSignature(content,profile.patched[name]) then matched=false end
-            else
-                local backup=env.read(paths[name]..profile.backupSuffix)
-                if not backup or not sameSignature(backup,expected) then matched=false end
-            end
-        end
-        if matched then
-            for key,value in pairs(profile) do env[key]=value end
-            return
-        end
+-- Returns 'current', 'updated' or 'installed'. Any other outcome raises, leaving
+-- DMM's own main.lua runnable as main.lua.
+local function install(env,dmmScripts,mcsScripts)
+    local main,original,stage=dmmScripts..'main.lua',dmmScripts..ORIGINAL,dmmScripts..STAGE
+    local desired=launcher(dmmScripts,mcsScripts)
+    if env.read(stage)~=nil then env.remove(stage) end
+    local current=env.read(main)
+    if current==nil then
+        -- An interrupted install moved DMM's main aside; put it back first.
+        assert(env.read(original)~=nil,'DawnwalkerModMenu main.lua is missing; reinstall DawnwalkerModMenu')
+        assert(env.rename(original,main),'could not restore DawnwalkerModMenu main.lua')
+        current=assert(env.read(main),'DawnwalkerModMenu main.lua unreadable')
     end
-    error('unsupported DawnwalkerModMenu file set; no reviewed lifecycle profile matches')
-end
-
-local function recoverInterrupted(env,paths)
-    local interrupted=false
-    for _,path in pairs(paths) do if env.read(path..NEW_SUFFIX)~=nil then interrupted=true;break end end
-    if not interrupted then return false end
-    for name,expected in pairs(env.supported or supported) do
-        local path=paths[name]
-        if env.read(path)==nil then
-            local backup=readRequired(env,path..(env.backupSuffix or BACKUP_SUFFIX))
-            assert(sameSignature(backup,expected),'interrupted patch has no verified baseline for '..name)
-            assert(env.write(path,backup),'could not restore interrupted '..name)
-            assert(env.read(path)==backup,'interrupted restore verification failed for '..name)
-        end
+    local function staged()
+        assert(env.write(stage,desired),'could not write the launcher')
+        assert(env.read(stage)==desired,'launcher verification failed')
     end
-    for _,path in pairs(paths) do
-        local temp=path..NEW_SUFFIX
-        if env.read(temp)~=nil then
-            assert(env.remove(temp),'could not remove interrupted stage '..temp)
-            assert(env.read(temp)==nil,'interrupted stage remains '..temp)
-        end
+    if current:find(MARK,1,true) and current:find(MARK,1,true)<=512 then
+        assert(env.read(original)~=nil,"DawnwalkerModMenu's own main ("..ORIGINAL..') is missing; reinstall DawnwalkerModMenu')
+        if current==desired then return 'current' end
+        staged()
+        assert(env.remove(main),'could not replace the launcher')
+        assert(env.rename(stage,main),'could not install the launcher')
+        assert(env.read(main)==desired,'launcher verification failed')
+        return 'updated'
     end
-    return true
-end
-
-local function desiredFiles(env,paths)
-    local current,baseline,desired={},{},{}
-    local allPatched=true
-    local accepted=env.supported or supported
-    local completed=env.patched or patched
-    local transforms=env.patchers or patchers
-    for name,expected in pairs(accepted) do
-        local content=readRequired(env,paths[name])
-        current[name]=content
-        if sameSignature(content,expected) then
-            allPatched=false
-            baseline[name]=content
-            desired[name]=transforms[name](content)
-            assert(sameSignature(desired[name],completed[name]),'internal patch signature mismatch for '..name)
-        elseif sameSignature(content,completed[name]) then
-            desired[name]=content
-            local backup=env.read(paths[name]..(env.backupSuffix or BACKUP_SUFFIX))
-            assert(backup and sameSignature(backup,expected),'supported backup missing for patched '..name)
-            baseline[name]=backup
-        else
-            error('unsupported DawnwalkerModMenu 1.0.7 '..name)
-        end
-    end
-    local payload=env.read(paths['extension_events.lua'])
-    if payload and payload~=EVENT_PAYLOAD then error('unsupported DawnwalkerModMenu extension_events.lua') end
-    local patched=allPatched and payload==EVENT_PAYLOAD
-    return patched and 'patched' or 'needs-patch',current,baseline,desired,payload
-end
-
-local function rollback(env,paths,current,payload,touched,payloadTouched,staged)
-    local errors={}
-    for name in pairs(touched) do
-        env.remove(paths[name])
-        local ok,err=env.write(paths[name],current[name])
-        if not ok or env.read(paths[name])~=current[name] then errors[#errors+1]=name..': '..tostring(err or 'restore verification failed') end
-    end
-    if payloadTouched and payload then
-        env.remove(paths['extension_events.lua'])
-        local ok,err=env.write(paths['extension_events.lua'],payload)
-        if not ok or env.read(paths['extension_events.lua'])~=payload then errors[#errors+1]='extension_events.lua: '..tostring(err or 'restore verification failed') end
-    elseif payloadTouched then
-        local ok,err=env.remove(paths['extension_events.lua'])
-        if not ok and env.read(paths['extension_events.lua']) then
-            errors[#errors+1]='extension_events.lua: '..tostring(err)
-        end
-    end
-    for _,temp in pairs(staged) do env.remove(temp) end
-    return #errors==0,table.concat(errors,'; ')
-end
-
-local function patch(env,paths,current,baseline,desired,payload)
-    assert(type(env.rename)=='function','atomic rename unavailable')
-    local staged={}
-    local function stage(path,content)
-        local temp=path..NEW_SUFFIX
-        assert(env.read(temp)==nil,'previous patch transaction needs review: '..temp)
-        staged[path]=temp
-        assert(env.write(temp,content),'could not stage '..path)
-        assert(readRequired(env,temp)==content,'staged verification failed for '..path)
-    end
-    local stagedOK,stageError=pcall(function()
-        for name,content in pairs(desired) do if current[name]~=content then stage(paths[name],content) end end
-        if payload~=EVENT_PAYLOAD then stage(paths['extension_events.lua'],EVENT_PAYLOAD) end
+    -- main.lua is DMM's own, freshly installed or put back by a DMM update.
+    staged()
+    if env.read(original)~=nil then assert(env.remove(original),'could not replace the previous '..ORIGINAL) end
+    assert(env.rename(main,original),'could not keep DawnwalkerModMenu main.lua as '..ORIGINAL)
+    local promoted,why=pcall(function()
+        assert(env.rename(stage,main),'could not install the launcher')
+        assert(env.read(main)==desired,'launcher verification failed')
     end)
-    if not stagedOK then
-        for _,temp in pairs(staged) do env.remove(temp) end
-        return nil,tostring(stageError)..'; live files unchanged'
+    if not promoted then
+        env.remove(main)
+        local restored=env.rename(original,main)
+        env.remove(stage)
+        error(tostring(why)..(restored and '; DawnwalkerModMenu main.lua restored'
+            or '; restoring DawnwalkerModMenu main.lua failed, rename '..ORIGINAL..' to main.lua'))
     end
-    local touched,payloadTouched={},false
-    local ok,err=pcall(function()
-        -- Every replacement is complete and verified before any live file moves.
-        for name,content in pairs(baseline) do
-            local backup=paths[name]..(env.backupSuffix or BACKUP_SUFFIX)
-            local existing=env.read(backup)
-            if existing then assert(existing==content,'backup does not match supported '..name)
-            else
-                assert(env.rename(paths[name],backup),'could not move backup for '..name)
-                assert(readRequired(env,backup)==content,'backup verification failed for '..name)
-                touched[name]=true
-            end
-        end
-        for name,content in pairs(desired) do
-            if current[name]~=content then
-                if env.read(paths[name])~=nil then assert(env.remove(paths[name]),'could not replace '..name) end
-                touched[name]=true
-                assert(env.rename(staged[paths[name]],paths[name]),'could not promote '..name)
-            end
-        end
-        if payload~=EVENT_PAYLOAD then
-            if payload~=nil then assert(env.remove(paths['extension_events.lua']),'could not replace extension_events.lua') end
-            payloadTouched=true
-            assert(env.rename(staged[paths['extension_events.lua']],paths['extension_events.lua']),
-                'could not promote extension_events.lua')
-        end
-        for name,content in pairs(desired) do
-            assert(readRequired(env,paths[name])==content,'verification failed for '..name)
-        end
-        assert(readRequired(env,paths['extension_events.lua'])==EVENT_PAYLOAD,'extension payload verification failed')
-    end)
-    if ok then return true end
-    local restored,restoreError=rollback(env,paths,current,payload,touched,payloadTouched,staged)
-    if not restored then return nil,tostring(err)..'; rollback failed: '..restoreError end
-    return nil,tostring(err)..'; changes rolled back'
+    return 'installed'
 end
 
 function M.run(log,initialize,overrides)
@@ -413,36 +198,25 @@ function M.run(log,initialize,overrides)
         finished=true;return true
     end
 
-    local gameDirectories,directoryError=directories(env)
-    if not gameDirectories then log('DMM_REQUIRED',directoryError);return false end
-    local located,paths,locateError=pcall(locate,env,gameDirectories)
-    if not located then log('DMM_REQUIRED',tostring(paths));return false end
-    if not paths then log('DMM_REQUIRED',locateError);return false end
-    local configured,profileError=pcall(selectProfile,env,paths)
-    if not configured then log('DMM_INCOMPATIBLE',tostring(profileError));return false end
-    local recovered,recoveryError=pcall(recoverInterrupted,env,paths)
-    if not recovered then log('DMM_PATCH_FAILED',tostring(recoveryError));return false end
-    local ok,state,current,baseline,desired,payload=pcall(desiredFiles,env,paths)
-    if not ok then log('DMM_INCOMPATIBLE',tostring(state));return false end
-    local changed=state~='patched'
-    if changed then
-        local patched,patchError=patch(env,paths,current,baseline,desired,payload)
-        if not patched then log('DMM_PATCH_FAILED',patchError);return false end
-        log('DMM_PATCHED','DawnwalkerModMenu '..(env.name or '1.0.7')..' lifecycle API installed')
-    end
+    local listed,gameDirectories=pcall(env.directories)
+    if not listed then log('DMM_REQUIRED','game directories unavailable: '..tostring(gameDirectories));return false end
+    local located,directory,locateError=pcall(locate,gameDirectories)
+    if not located or not directory then log('DMM_REQUIRED',tostring(located and locateError or directory));return false end
+    if not env.scripts then log('DMM_LAUNCHER_FAILED','ModCoreSettings Scripts directory unavailable');return false end
+    local installed,state=pcall(install,env,directory,env.scripts)
+    if not installed then log('DMM_LAUNCHER_FAILED',tostring(state));return false end
+    local changed=state~='current'
+    if changed then log('DMM_LAUNCHER_INSTALLED','DawnwalkerModMenu launcher '..state) end
     if type(env.defer)~='function' then
-        log(changed and 'DMM_RESTART_REQUIRED' or 'DMM_HANDSHAKE_FAILED','restart the game to load the DMM lifecycle API')
+        log(changed and 'DMM_RESTART_REQUIRED' or 'DMM_HANDSHAKE_FAILED','restart the game to load the DMM hooks')
         return false
     end
-    -- Match MCT's startup barrier: the game-thread callback runs after the
-    -- synchronous mod entry points have had a chance to load extensions.
+    -- DMM may start before or after ModCoreSettings. Its hooks announce readiness
+    -- synchronously, so by the first game-thread callback they have run or will not.
     local scheduled,why=pcall(env.defer,function()
         if finished or ready() then return end
-        if not finished then
-            finished=true
-            log(changed and 'DMM_RESTART_REQUIRED' or 'DMM_HANDSHAKE_FAILED',
-                'restart the game to load the DMM lifecycle API')
-        end
+        finished=true
+        log(changed and 'DMM_RESTART_REQUIRED' or 'DMM_HANDSHAKE_FAILED','restart the game to load the DMM hooks')
     end)
     if not scheduled or why==false then
         log('DMM_HANDSHAKE_FAILED',tostring(scheduled and 'game-thread dispatch rejected' or why))
@@ -451,6 +225,5 @@ function M.run(log,initialize,overrides)
     return 'waiting'
 end
 
-M._test={signature=signature,patchers=patchers,lazyPatchers=lazyPatchers,selectProfile=selectProfile,payload=EVENT_PAYLOAD,backupSuffix=BACKUP_SUFFIX,
-    newSuffix=NEW_SUFFIX,readyKey=READY,claimKey=CLAIM}
+M._test={launcher=launcher,install=install,original=ORIGINAL,stage=STAGE,mark=MARK,readyKey=READY,claimKey=CLAIM}
 return M

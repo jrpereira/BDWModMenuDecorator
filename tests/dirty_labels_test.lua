@@ -81,20 +81,7 @@ local function live() ownerChecks=ownerChecks+1;return active end
 local errors={}
 local controller=M.new(function(e,d) errors[#errors+1]=e..': '..d end)
 assert(controller:open('host',function() return active end,live))
-local lookupsBefore,ownersBefore=rowLookups,ownerChecks
-controller:construct(function()
-    for i=1,100 do
-        local text=widget('TextBlock');text.outer=host.WidgetTree
-        text:SetText({ftext='Decoration '..i})
-    end
-    controller:construct(function() key.labelWidget:SetText({ftext='Ability'}) end)
-    assert(controller.busy,'nested construction must preserve the outer guard')
-end)
-assert(rowLookups==lookupsBefore and ownerChecks==ownersBefore,'decoration text must cause zero row discovery or owner lookups')
-assert(not controller.busy)
-assert(not pcall(function() controller:construct(function() error('construction failure') end) end))
-assert(not controller.busy,'failed construction must restore signal handling')
-controller:bind(all,routes,{[key]=mode})
+controller:bind(all,routes)
 assert(#errors==0,table.concat(errors,'\n'))
 assert(#header.shell.children==0,'The level-one title row must not show a dirty star')
 local function changed(r,text) r.valueWidget:SetText({ftext=text});controller:refresh(host) end
@@ -104,7 +91,7 @@ for _,r in ipairs({key,mode,toggle,literal,fallback,template}) do
     assert(star(r).Slot.horizontal==1 and star(r).Slot.vertical==2 and star(r).Slot.padding.Left==4)
 end
 local count=#key.shell.children
-controller:bind(all,routes,{[key]=mode})
+controller:bind(all,routes)
 assert(#key.shell.children==count,'rebinding must reuse the star')
 local previousFonts=key.labelWidget.fontWrites
 changed(key,'49') -- DMM's mapped-preset wrapper suppresses its own dirty suffix.
@@ -124,10 +111,10 @@ changed(key,'75 *')
 assert(ownerChecks==ownerBefore+1,'one fresh owner lookup per signal, not per route node')
 assert(key.valueWidget.text=='75' and key.labelWidget.text=='Ability' and star(key).visibility==4 and key.labelWidget.Font.TypefaceFontName=='Italic')
 changed(mode,'Hold *')
+assert(star(mode).visibility==4,'each row shows its own dirty state')
 changed(key,'82')
-assert(key.labelWidget.text=='Ability' and star(key).visibility==4,'mode dirtiness must keep combined label dirty')
+assert(key.labelWidget.text=='Ability' and star(key).visibility==2 and key.labelWidget.Font.TypefaceFontName=='Regular')
 changed(mode,'Tap')
-assert(key.labelWidget.text=='Ability' and key.labelWidget.Font.TypefaceFontName=='Regular')
 assert(mode.labelWidget.text=='Mode' and mode.labelWidget.Font.TypefaceFontName=='Regular')
 changed(toggle,'Off *')
 assert(toggle.labelWidget.text=='Enabled' and star(toggle).visibility==4 and toggle.valueWidget.text=='Off')
@@ -135,7 +122,7 @@ changed(toggle,'On') -- Restore changes the rendered value and clears the marker
 assert(toggle.labelWidget.text=='Enabled' and star(toggle).visibility==2)
 local signal=widget('TextBlock','MC_VALUE_DIRTY_1\n0\nOn')
 signal.outer=host.WidgetTree;toggle.shell:AddChildToOverlay(signal)
-controller:bind(all,routes,{[key]=mode})
+controller:bind(all,routes)
 signal:SetText({ftext='MC_VALUE_DIRTY_1\n1\nOff'})
 toggle.valueWidget:SetText({ftext='Off'})
 controller:refresh(host)
@@ -164,12 +151,12 @@ assert(#errors==0,table.concat(errors,'\n'))
 changed(key,'90 *')
 controller:open('host',function() return active end,live)
 key.valueWidget:SetText({ftext='82'})
-controller:bind(all,routes,{[key]=mode})
+controller:bind(all,routes)
 assert(key.labelWidget.text=='Ability' and key.labelWidget.Font.TypefaceFontName=='Regular')
 -- Rebinding without a DMM write retains the row-owned signal after suffix stripping.
 changed(key,'90 *')
 controller:open('host',function() return active end,live)
-controller:bind(all,routes,{[key]=mode})
+controller:bind(all,routes)
 assert(key.labelWidget.text=='Ability' and star(key).visibility==4)
 -- A reused address cannot resolve to an invalid row.
 key.shell.alive=false
@@ -187,4 +174,4 @@ before=calls
 key.valueWidget:SetText({ftext='93 *'})
 assert(calls==before+1)
 assert(#errors==0,table.concat(errors,'\n'))
-print('PASS menu-scoped dirty presentation, real-face/skew restoration, paired OR, literal stars, reentrancy, reopen and cleanup')
+print('PASS menu-scoped dirty presentation, real-face/skew restoration, literal stars, reopen and cleanup')

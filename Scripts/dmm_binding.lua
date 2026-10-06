@@ -1,9 +1,7 @@
 local Discovery=require('widget_discovery')
-local KeySelector=require('key_selector')
 local Lifecycle=require('dmm_lifecycle')
-local ClickDelivery=require('click_delivery')
 local DirtyLabels=require('dirty_labels')
-local StandardControls=require('standard_controls')
+local RowError=require('row_error')
 local M={}
 local UPDATE_MS=50
 
@@ -12,95 +10,42 @@ function M.install(log)
     for _,api in ipairs({'StaticFindObject','ExecuteWithDelay','ExecuteInGameThread'}) do
         if type(_G[api])~='function' then return false,api..' unavailable' end
     end
-    local clicks=ClickDelivery.new(log)
     local dirty=DirtyLabels.new(log)
     local scope,schedule
     local active=nil
     local pending={}
     local eventTicket=nil
-    local function ledger(instance)
-        local refs={}
-        local function add(target,keys)
-            for _,key in ipairs(keys) do
-                local object=target[key]
-                if object then
-                    local full=object:GetFullName()
-                    refs[#refs+1]={target=target,key=key,address=Discovery.address(object),name=object:GetFName():ToString(),full=full,path=assert(full:match('^%S+ (.+)$'))}
-                end
-            end
-        end
-        add(instance,{'selector','keyBox','keyFrame','keyInner','keyText','stateWidget','modeNav'})
-        if instance.groupToggleRow then add(instance.groupToggleRow,{'slider'}) end
-        if instance.optional then add(instance.optional,{'box','button','text'}) end
-        if instance.fixedBox then add(instance,{'fixedBox'}) end
-        add(instance.row,{'slider','wrapper','labelWidget','valueWidget','modeState'})
-        if instance.pair then
-            add(instance.pair,{'box','button','inner','nav','valueWidget','text'})
-            if instance.pair.row then add(instance.pair.row,{'wrapper'}) end
-        end
-        for i in ipairs(instance.keyEdges or {}) do add(instance.keyEdges,{i}) end
-        instance.liveRefs=refs
+    -- An entry is fully functional or shows only its label and an error; never partly working.
+    local function fail(row,message)
+        local ok,err=pcall(RowError.mark,row,message)
+        if not ok then log('ROW_ERROR_FAILED',tostring(row.settingId)..': '..tostring(err)) end
     end
-    local function refresh(instance,allowed,routes,resolve)
-        local fresh={}
-        for i,ref in ipairs(instance.liveRefs) do
-            if not allowed() then return false end
-            local object=resolve(routes[ref.address])
-            if not object then return false,'unavailable control: '..tostring(ref.key) end
-            fresh[i]=object
-        end
-        if not allowed() then return false end
-        for i,ref in ipairs(instance.liveRefs) do ref.target[ref.key]=fresh[i] end
-        return true
-    end
-    local function bindPage(state,rows,providerId,byId)
+    -- Splits a scroll's rows into usable rows and rows with an error message.
+    -- The page's provider is the one most rows name; ties go to the earliest row.
+    local function classify(rows)
+        local counts,providerId,best={},nil,0
         for _,row in ipairs(rows) do
-            local metadata=row.dmmSetting
-            local modeRow=metadata and metadata.mcPairId and byId[metadata.mcPairId]
-            local modeValues=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.values
-            local descriptor=metadata and metadata.mcKeybind and metadata.kind=='slider' and {
-                providerId=providerId,settingId=metadata.id,minimum=metadata.minimum,maximum=metadata.maximum,
-                default=metadata.default,
-                optional=metadata.mcOptional,
-                defaultControl=metadata.mcDefaultControl,
-                defaultName=metadata.mcDefaultControl and StandardControls.resolve(metadata.mcDefaultControl) or nil,
-                groupedLabel=metadata.label,groupToggleRow=metadata.mcGroupedBy and byId[metadata.mcGroupedBy],
-                fixedMode=metadata.mcFixedMode,modeId=modeRow and metadata.mcPairId or nil,
-                modeOptions=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.labels or nil,
-                modeValues=modeValues,disabledMode=modeValues and (modeValues[2]==-2 and -2 or modeValues[3]==-1 and -1) or nil,
-            } or nil
-            if descriptor and row.kind=='slider' then
-                local ok,instance,detail=pcall(KeySelector.adopt,row,descriptor,modeRow,clicks)
-                if ok and not instance then
-                    if modeRow and not modeRow.pairHost then
-                        ok,instance,detail=false,nil,'paired picker host unavailable'
-                    else
-                        ok,instance,detail=pcall(KeySelector.decorate,row,descriptor,log,modeRow and modeRow.pairHost or nil,clicks)
-                    end
-                end
-                if ok and instance then
-                    if modeRow then instance.modeNav=modeRow.nav end
-                    local recorded,recordError=pcall(ledger,instance)
-                    if recorded then
-                        instance.id=providerId..'.'..row.settingId
-                        instance.undo=nil;instance.pairUndo=nil -- rollback receipts are construction-only
-                        state.instances[#state.instances+1]=instance
-                        if modeRow then state.pairsByRow[modeRow]=row end
-                    else
-                        clicks:forget(instance)
-                        -- Roll back only this just-constructed row, never an adopted
-                        -- decoration whose lifetime belongs to the existing page.
-                        if instance.undo then
-                            local restored,result=pcall(KeySelector.restore,instance,function() return true end)
-                            if not restored or not result then
-                                log('RESTORE_FAILED',providerId..'.'..row.settingId..': '..tostring(restored and 'rollback incomplete' or result))
-                            end
-                        end
-                        log('DECORATE_FAILED',providerId..'.'..row.settingId..': '..tostring(recordError))
-                    end
-                else log('DECORATE_FAILED',providerId..'.'..row.settingId..': '..tostring(ok and (detail or 'no decoration returned') or instance)) end
+            local id=row.identityProviderId
+            if id then
+                counts[id]=(counts[id] or 0)+1
+                if counts[id]>best then providerId,best=id,counts[id] end
             end
         end
+        if not providerId then return nil end
+        local reasons,seen={},{}
+        for _,row in ipairs(rows) do
+            local id=row.settingId
+            -- Field types draw their own editor inside DMM's Lua state; nothing to bind here.
+            if row.dmmSetting and row.dmmSetting.kind=='extension' and row.dmmSetting.id==id then
+            elseif not id or not row.dmmSetting or row.dmmSetting.id~=id then reasons[row]='Error: no identity'
+            elseif row.dmmSetting.kind~=row.kind then reasons[row]='Error: type mismatch'
+            elseif row.identityProviderId~=providerId then reasons[row]='Error: other page'
+            elseif seen[id] then reasons[row]='Error: duplicate id';reasons[seen[id]]='Error: duplicate id'
+            else seen[id]=row end
+        end
+        local good={}
+        for _,row in ipairs(rows) do if not reasons[row] then good[#good+1]=row end end
+        return providerId,good,reasons
     end
 
     local function tick(path,epoch,selections)
@@ -113,10 +58,8 @@ function M.install(log)
             or host:IsVisible()~=true or host:GetIsEnabled()~=true then
             scope:invalidate('host inactive');return
         end
-        local state=active
-        if not state then
-            state={instances={},routes={},pairsByRow={}}
-            active=state
+        if not active then
+            active=true
             -- One event-driven discovery, after DMM finishes its synchronous row build.
             local snapshots={}
             if selections and #selections>0 then
@@ -145,76 +88,42 @@ function M.install(log)
                 for _,scroll in ipairs(snapshot.scrolls) do
                     if not allowed() then return end
                     local rows=snapshot.directRows or Discovery.rowsFromScroll(scroll) or {}
-                    local providerId=rows[1] and rows[1].identityProviderId
-                    local byId,consistent={},providerId~=nil
-                    for _,row in ipairs(rows) do
-                        if not row.settingId or not row.dmmSetting or row.dmmSetting.id~=row.settingId
-                            or row.dmmSetting.kind~=row.kind or row.identityProviderId~=providerId or byId[row.settingId] then
-                            consistent=false;break
+                    local providerId,good,reasons=classify(rows)
+                    if providerId then
+                        for index,row in ipairs(rows) do
+                            local reason=reasons[row]
+                            if reason then
+                                log('ROW_ERROR',providerId..' row '..index..' '..tostring(row.settingId)..': '..reason
+                                    ..' (kind '..tostring(row.kind)..'/'..tostring(row.dmmSetting and row.dmmSetting.kind)
+                                    ..', provider '..tostring(row.identityProviderId)..')')
+                                fail(row,reason)
+                            end
                         end
-                        byId[row.settingId]=row
-                    end
-                    if consistent then
-                        for _,row in ipairs(rows) do allRows[#allRows+1]=row end
-                        dirty:construct(function() bindPage(state,rows,providerId,byId) end)
+                        for _,row in ipairs(good) do allRows[#allRows+1]=row end
                     end
                 end
+                local routes
                 if allowed() then
                     local objects={}
                     local function add(value) if Discovery.valid(value) then objects[#objects+1]=value end end
                     for _,row in ipairs(allRows) do
                         for _,key in ipairs({'slider','nav','surface','surfaceBox','line','labelBox','labelButton','labelWidget',
                             'valueBox','valueWidget','overlay','wrapper','scroll','shell','content','lane','leftBox','centerBox',
-                            'rightBox','leftButton','centerButton','rightButton','button','modeState'}) do add(row[key]) end
+                            'rightBox','leftButton','centerButton','rightButton','button'}) do add(row[key]) end
                     end
-                    for _,instance in ipairs(state.instances) do
-                        for _,ref in ipairs(instance.liveRefs or {}) do add(ref.target[ref.key]) end
-                    end
-                    state.routes=Discovery.routesFor(host,objects,allowed)
-                    if not state.routes then
+                    routes=Discovery.routesFor(host,objects,allowed)
+                    if not routes then
                         local rebuilt=Discovery.activeTrees(host,allowed)[1]
-                        state.routes=rebuilt and rebuilt.routes or snapshot.routes or {}
+                        routes=rebuilt and rebuilt.routes or snapshot.routes or {}
                     end
                 end
-                dirty:bind(allRows,state.routes,state.pairsByRow)
+                dirty:bind(allRows,routes or {})
             end
-            state.pairsByRow=nil -- Pair addresses now belong to the active presentation hook.
         end
-        local instances=state.instances
-        local resolve=Discovery.routeResolver(host,allowed)
-        if not resolve then scope:invalidate('tree root unavailable');return end
-        local usable=dirty:refresh(host)
-        for _,instance in ipairs(instances) do
-            if not allowed() then return end
-            if not instance.disabled then
-                local freshOK,fresh,refreshError=pcall(refresh,instance,allowed,state.routes,resolve)
-                local ok,alive=false,false
-                if freshOK and fresh and allowed() then
-                    clicks:deliver(instance)
-                    ok,alive=pcall(KeySelector.tick,instance,log)
-                end
-                if ok and alive then instance.failures=0
-                else
-                    instance.failures=(instance.failures or 0)+1
-                    if instance.failures==1 then
-                        local reason=not freshOK and fresh or (not fresh and refreshError) or (not ok and alive) or 'control unavailable'
-                        log('SELECTOR_TICK_FAILED',instance.id..': '..tostring(reason))
-                    end
-                    if instance.failures>=3 and allowed() then
-                        instance.disabled=true
-                        clicks:forget(instance)
-                        log('SELECTOR_DISABLED',instance.id..': updates stopped until next page event')
-                    end
-                end
-            end
-            if not instance.disabled then usable=usable+1 end
-        end
-        clicks:discard()
-        clicks:sample()
-        if usable==0 then return end
+        if dirty:refresh(host)==0 then return end
         if allowed() then schedule(path,epoch,UPDATE_MS) end
     end
-    local function fail(path,epoch,event,err)
+    local function abandon(path,epoch,event,err)
         pending[epoch]=nil
         if scope:matches(path,epoch) then
             log(event,tostring(err))
@@ -232,19 +141,19 @@ function M.install(log)
                     if not scope:matches(path,epoch) then return end
                     if EngineTickAvailable==false then scope:invalidate('engine tick unavailable');return end
                     local ok,err=pcall(tick,path,epoch,selections)
-                    if not ok then fail(path,epoch,'DISCOVERY_FAILED',err) end
+                    if not ok then abandon(path,epoch,'DISCOVERY_FAILED',err) end
                 end
                 if EGameThreadMethod and EGameThreadMethod.EngineTick then ExecuteInGameThread(work,EGameThreadMethod.EngineTick)
                 else ExecuteInGameThread(work) end
             end)
-            if not dispatched then fail(path,epoch,'GAME_THREAD_DISPATCH_FAILED',dispatchError) end
+            if not dispatched then abandon(path,epoch,'GAME_THREAD_DISPATCH_FAILED',dispatchError) end
         end)
-        if not queued then fail(path,epoch,'SCHEDULING_FAILED',queueError) end
+        if not queued then abandon(path,epoch,'SCHEDULING_FAILED',queueError) end
     end
     local err
     scope,err=Lifecycle.install(log,function(path,epoch,selection)
         if not path then
-            eventTicket=nil;active=nil;clicks:retire(nil);clicks:close();dirty:close();return
+            eventTicket=nil;active=nil;dirty:close();return
         end
         dirty:open(path,function() return scope:matches(path,epoch) end,function() return scope:ownerLive() end)
         -- Multiple DMM switcher calls in the same stack share one deferred refresh.
@@ -262,12 +171,10 @@ function M.install(log)
             eventTicket=nil
             local currentPath,currentEpoch=ticket.path,ticket.epoch
             if not scope:matches(currentPath,currentEpoch) then return end
-            active=nil;clicks:retire(nil)
-            local clickOK,clickError=clicks:open(currentPath)
-            if not clickOK then log('CLICK_INPUT_FAILED',tostring(clickError)) end
+            active=nil
             schedule(currentPath,currentEpoch,0,#ticket.selections>0 and ticket.selections or nil)
         end)
-        if not queued then eventTicket=nil;fail(path,epoch,'SCHEDULING_FAILED',queueError) end
+        if not queued then eventTicket=nil;abandon(path,epoch,'SCHEDULING_FAILED',queueError) end
     end)
     if not scope then return false,err end
     return true

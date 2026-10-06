@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import package_manifest
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = '_ModCore_1_Settings'
+MODULE = '1_ModCore_Settings'
 def version(root=ROOT):
     return package_manifest.version(root)
 def build(root=ROOT, out=None, expected=None):

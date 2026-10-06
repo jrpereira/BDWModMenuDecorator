@@ -2,7 +2,7 @@
 
 - [Requirements and installation](#requirements-and-installation)
 - [Minimal integration](#minimal-integration)
-- [Pairing a mode picker](#pairing-a-mode-picker)
+- [Field types: keybind](#field-types-keybind)
 - [Apply and persistence contract](#apply-and-persistence-contract)
 - [Discovery and layout constraints](#discovery-and-layout-constraints)
 - [Logging and integration checks](#logging-and-integration-checks)
@@ -12,14 +12,13 @@
 - [Apply notifications](#apply-notifications)
 - [Presentation metadata](#presentation-metadata)
 - [Migrating missing defaults](#migrating-missing-defaults)
-- [Fixed mode labels](#fixed-mode-labels)
 
-ModCoreSettings replaces explicitly marked Dawnwalker Mod Menu (DMM) numeric key
-controls with key-capture controls. An optional mode picker is displayed on the same
-row. Your mod continues to own its configuration and gameplay behavior; DMM owns
-pending edits, dirty state, Apply, saving, Reset, and Restore.
+ModCoreSettings extends Dawnwalker Mod Menu (DMM): page presentation, contributed
+pages, and setting types DMM does not know, such as `Type=keybind`, a key-capture
+row with its own Tap/Hold control. Your mod continues to own its configuration and
+gameplay behavior; DMM owns pending edits, dirty state, Apply, Reset, and Restore.
 
-The decorator does **not** register gameplay bindings, implement Tap/Hold timing,
+ModCoreSettings does **not** register gameplay bindings, implement Tap/Hold timing,
 or depend on UE4SSLuaEventBridge. Input providers can use the bridge separately. Choosing a key changes a setting. The menu can name a spell; it cannot cast it.
 
 ## Requirements and installation
@@ -27,16 +26,23 @@ or depend on UE4SSLuaEventBridge. Input providers can use the bridge separately.
 The current implementation targets Dawnwalker with UE4SS/Lua 5.4 and the tested DMM
 widget layout. It is not a generic settings framework for every Unreal game or DMM
 version. Install DMM and ModCoreSettings as separate UE4SS mods. Do not copy DMM
-source into your mod. Install Settings under `_ModCore_1_Settings`.
+source into your mod. Install Settings under `1_ModCore_Settings`.
 Remove the old `AdaptiveModMenu` mod folder before starting the game. ModCoreSettings reads
 `mc*` manifest fields only. Producers must emit this prefix; no legacy metadata translation is installed. Saved setting names and values are unchanged.
+
+A `mod.json` dependency states its version requirement as a comparison operator
+(`>=`, `>`, `<=`, `<`, `=`) followed by the dependency's own version number, written
+exactly as that mod writes it: `"version": ">= 1.0.7.1"` for Dawnwalker Mod Menu.
+A trailing `+` is the same as `>=`: `"1.0.7.1+"` means that version or later.
+Versions compare part by part on the dots, numerically, with missing parts as 0,
+so `1.0.7.1` is above `1.0.7` and below `1.0.8`.
 
 Your provider folder needs `mod_settings.ini` and its own configuration file, for example:
 
 ```text
 Mods/
   DawnwalkerModMenu/
-  _ModCore_1_Settings/
+  1_ModCore_Settings/
     enabled.txt
     Scripts/main.lua
   ExampleMod/
@@ -65,9 +71,8 @@ Initialization completes synchronously before DMM reads configuration for the
 provider's settings page. It adds no polling or gameplay work. Your mod must still
 handle its own startup defaults because menu initialization can occur later.
 Restart after adding/changing manifest metadata; this is
-not a manifest or configuration hot-reload API. On supported DMM 1.0.7 installs,
-ModCoreSettings transactionally adds the lifecycle callback API to DMM's Lua files and keeps
-verified `.amm-1.0.7.bak` baselines for rollback. A restart activates that patch.
+not a manifest or configuration hot-reload API. ModCoreSettings never edits DMM's
+files; it reaches DMM through a launcher (see "DMM launcher" below).
 
 ## Minimal integration
 
@@ -117,86 +122,72 @@ directly. Apply and Restore clear the visual baseline.
 Apply and Restore remain DMM operations. Opening an inconsistent saved preset
 preserves its keys and changes the pending picker to Custom.
 
-Dawnwalker Mod Menu loads `Scripts/dmm_extension.lua` from enabled direct mods at
-startup and passes its choices, controls and pages modules through extension API
-version 1. ModCoreSettings installs its mapped-preset, presentation and migration wrappers in
-that Lua state. No native DLL, additional runtime or gameplay timer is used. The
-startup bootstrap installs the version-checked DMM lifecycle patch described above.
-Install both mods before starting the game; loading ModCoreSettings after DMM has started does
-not retrofit the existing page. Restart after installing, removing or updating an
-extension.
+### DMM launcher
+
+Dawnwalker Mod Menu has no extension API, and ModCoreSettings does not patch its
+files. At startup `dmm_bootstrap.lua` keeps DMM's own `Scripts/main.lua` as
+`main.dmm.lua` and puts a small launcher in its place. UE4SS still starts
+`main.lua`; the launcher, while ModCoreSettings is enabled, calls
+`dmm_extension.lua`'s `launch()` inside DMM's Lua state, then always runs
+`main.dmm.lua`. A failed launch is logged and DMM still starts unchanged.
+
+`launch()` requires DMM's `choices`, `controls`, `pages` and `nativeactions`
+before DMM's main does, so DMM later receives the same, already hooked module
+tables. `dmm_events.lua` recreates the `providerPrepared`, `providerRefreshed`
+and `hostClosing` boundaries by wrapping the panel `controls.build` returns and
+`nativeactions.new`/`close`; the extension then installs its mapped-preset,
+presentation, migration, page and lifecycle wrappers as before. No native DLL,
+additional runtime or gameplay timer is used.
+
+The launcher holds only paths, relative to its own folder (absolute only when DMM and
+this mod sit on different drives). It opens with a short thank-you note to DMM's author.
+The bootstrap rewrites it when the layout changes and installs it again when DMM's
+own `main.lua` comes back (a DMM update or a mod-manager redeploy), replacing the
+previous `main.dmm.lua`. Writes are staged and verified; a failed install puts
+DMM's own `main.lua` back. Renaming keeps a mod manager's hard link to its staged
+copy intact. When DMM has already started in the boot that installs the
+launcher, the hooks load from the next start (`DMM_RESTART_REQUIRED`).
+To remove the launcher by hand, delete `main.lua` and rename `main.dmm.lua` to
+`main.lua`.
 
 Offline tests exercise the Lua extension and UI modules. Validate native widget
 behavior against the supported DMM version in-game.
 
-### Key controls
+### Field types: keybind
 
-Copy the complete [example manifest](../examples/ExampleMod/mod_settings.ini) into
-your provider and adapt its IDs, labels, config paths and defaults. The matching
-[example config](../examples/ExampleMod/config.example.ini) starts with Q + Tap.
-For that example, copy it to `config.ini` in the provider folder.
+ModCoreSettings adds setting types DMM does not know (`field_types.lua`). DMM
+still builds such a row as its toggle shell (label, row, navigation and
+description) and keeps its value, as text, in its own model; the type's editor
+draws the controls, reads them (getter) and fills them (setter). Changed rows,
+Apply, Reset and Restore stay DMM's. The parse hook puts these settings at their
+manifest positions among DMM's, keeps DMM's visibility and preset references
+pointing at the right settings, and applies `VisibleWhen` and category rules to
+them too. Applied notifications carry only number values.
 
-The key row's essential fields are:
-
-```ini
-[Setting.Interact]
-Id = Interact
-Type = integer
-mcType = keybind
-Label = Interact key
-Group = Controls
-ConfigFile = config.ini
-ConfigSection = Bindings
-ConfigKey = Interact
-Minimum = 0
-Maximum = 254
-Step = 1
-Default = 81
-```
-
-The stored number is a Windows virtual-key code, not an Unreal FKey name or scan
-code. `81` is Q; `0` means unbound. Use the 0–254 range and integer steps for this
-representation. The registry accepts numeric `integer` or `slider` rows with valid
-Minimum/Maximum, but capture only supports the mappings in
-[key_codes.lua](../Scripts/key_codes.lua). Numeric range membership alone does not
-make every key supported. Escape is reserved for cancellation. Left/right Shift,
-Control, Alt and Windows keys are stored as distinct virtual-key values. Modifier
-chords and gamepad capture are disabled. Unsupported captured keys are rejected rather than
-silently substituted.
-
-## Pairing a mode picker
-
-Add a picker that declares the key setting through `Pair`:
+`Type=keybind` (`keybind_editor.lua`) is one setting holding `none` or
+`<FKey>|<trigger>`, for example `LeftAlt|Hold`; number keys are written as
+digits (`1|Tap`). The row shows an X to clear it (with `Optional=1`), the key box
+(click, then press a key; Escape cancels; gamepad keys and modifier chords are
+refused) and the trigger control (click to cycle). While unbound the key shows an
+italic placeholder and, with `DefaultControl=IA_*`, the player's keys for that
+action from the Settings key profile beside it.
 
 ```ini
-[Setting.InteractMode]
-Id = InteractMode
-Type = picker
-Pair = Interact
-Label = Interact
-Group = Controls
-ConfigFile = config.ini
-ConfigSection = Bindings
-ConfigKey = InteractMode
-PresetValues = 0|1
-PresetLabels = Tap|Hold
-Default = 0
+[Setting]
+Id=Jump
+Label=Jump
+Type=keybind
+Triggers=Tap|Hold
+Default=SpaceBar
+Optional=1
+DefaultControl=IA_Jump
 ```
 
-The picker that declares `Pair` owns the composite row and supplies its visible
-label. The target key setting contributes only its key control. If DMM visibility
-hides the key setting, the key control disappears while the picker retains its
-normal full-width row. Pairing is ID-based and does not depend on row order.
-The first two declared modes share one control: its label shows the selected mode,
-and each click switches to the other declared value. An optional third `-1`
-Default mode remains a separate control; clicking the shared control from Default
-selects the first mode. `Pair` renders this mode control without `mcType=tab`.
-
-A picker without explicit decoration remains a stock control. No mode row is
-required for a standalone keybind. Use matching ordered `PresetValues` and
-`PresetLabels`; the provider defines their meaning. Tap and Hold are example labels,
-not behavior supplied by the decorator. Your provider must interpret `InteractMode`
-and apply it to its input implementation.
+`Default` is `none` (or `0`), `<FKey>` (the first listed trigger) or
+`<FKey>|<trigger>`. The first listed trigger is also the one a newly assigned
+key takes. Keybinds need a page whose hooks own its
+storage: on a page saved through DMM's own file the page shows an error, because
+DMM writes numbers only.
 
 ## Apply and persistence contract
 
@@ -231,9 +222,8 @@ identity from row order or localized labels. DMM lifecycle callbacks provide the
 completed provider ScrollBox after construction and after visibility refreshes.
 Changes to DMM's marker or widget hierarchy can still require compatibility work.
 
-Decoration uses proxy widgets while retaining stock controls as backing state.
 UObject work is dispatched to the game thread. Do not import this mod's internal Lua
-modules from a provider: decoration is configured through manifest metadata. The supported
+modules from a provider: presentation is configured through manifest metadata. The supported
 [Apply notification API](#apply-notifications) is a separate integration surface.
 
 ## Logging and integration checks
@@ -249,26 +239,9 @@ Control synchronization remains at 50 ms within that scope and stops when no usa
 from the current host root rather than repeated global lookups for each control. Each eligible update performs exact owner/host lookups; there is no global widget enumeration
 or permanently running discovery timer. Closing/loading revokes deferred work;
 obsolete queued callbacks drain without UObject access or rescheduling.
-Picker clicks use one UE4SS left-mouse callback that queues primitive Lua state. Each menu-scoped game-thread update samples the hovered owned proxy button. A queued press is delivered only if that same button remains hovered at the next update; movement to another target discards it instead of changing the wrong setting. Pointer movement away and back entirely between updates cannot be observed, and a click during that interval can still be attributed to the sampled button.
-No UObject is accessed by the key callback and no press-state sampling is used. Click routing and lifecycle integration still need
-in-game validation; unavailable pointer input leaves the stock mode row available.
-
-For your integration, test a key-only change, a mode-only change,
-the dirty marker and Apply, persistence after reopening/restarting, clean and
-already-dirty Escape cancellation, Reset/Restore, unrelated settings pages, and
-the provider's actual gameplay behavior after Apply. Test transparent surfaces and
-longest mode labels in the real UI. Automated mocks cannot validate those native paths.
-
-## Optional key bindings
-
-Set `mcOptional=1` on an `mcType=keybind` integer setting when zero represents a
-valid default choice. Without `mcDefaultControl`, zero renders `(none)` with an
-`Optional` marker. Set `mcDefaultControl=IA_ActionId` to resolve zero from that
-standard game control; it renders the inherited key in parentheses with a
-`Default` marker. A custom nonzero key shows the red `X` and its mode; clicking
-the `X` writes zero to the stock DMM slider, so Apply, Reset, dirty state, and
-persistence remain owned by DMM.
-
+For your integration, test changes, the dirty marker and Apply, persistence after
+reopening and restarting, Escape cancellation, Reset/Restore and the provider's
+actual gameplay behavior after Apply. Automated mocks cannot validate native paths.
 
 ## Menu scope and row ownership
 
@@ -486,10 +459,20 @@ callback.
 
 ## Presentation metadata
 
-`mcType=tab` renders an ordinary picker as contour-free, right-aligned choices
-with a 24-pixel right inset on the same row as its label. It supports two to eight
+`mcType=tab` renders an ordinary picker as outlined, right-aligned choices
+with a 24-pixel right inset on the same row as its label. Choices sit 4 pixels
+apart; the selected choice's outline is drawn at full strength. It supports two to eight
 choices and retains DMM's keyboard/controller navigation, pending model and
 Apply/Restore behavior.
+
+`mcType=cycle` renders a picker as one button showing only the current choice at
+13pt; a click moves to the next choice, wrapping. The button is as wide as the
+keybind editor's key box and sits in its key column, so it lines up under keys.
+DMM's keyboard/controller navigation is retained.
+
+`mcWrap=1` on an `mcReadOnly=1` picker shows its value as 13pt left-aligned
+text in a wider column, broken after commas so no line reaches 34 characters;
+the row grows to fit its lines.
 
 Set `mcNavigation=1` on a picker to use its choices only for menu navigation.
 The picker can drive ordinary `VisibleWhen` / `VisibleValues` rules, but has no
@@ -631,25 +614,3 @@ destinations in one file transaction. Providers declaring migrations also pass
 through an owned DMM open adapter: a failed migration sets DMM's normal error
 state and disables editing/Apply until the problem is corrected. Other providers
 use the original open path. No DMM source files are modified.
-
-## Fixed mode labels
-
-A standalone keybind can declare `mcMode=Tap` or `mcMode=Hold`. This supplies
-a fixed, noninteractive label without creating a second setting. Paired pickers
-instead use the picker-owned `Pair` contract described above.
-
-No mode/config value is created to match the fixed label. In particular, Hold
-is only display text; a mod can implement immediate physical hold behavior
-without a Tap/Hold threshold. This metadata does not implement input behavior.
-
-```ini
-[Setting.SharedSlot1]
-Id=SharedSlot1
-Type=integer
-mcType=keybind
-mcMode=Tap
-; Include the ordinary range, default and config fields.
-
-```
-
-`mcOptional=1` can be combined with either a fixed `mcMode` or a paired picker.

@@ -1,13 +1,16 @@
 local loaded={}
 local installs={}
+local fieldTypes={registered={}}
 local shared={}
 ModRef={SetSharedVariable=function(_,key,value) shared[key]=value end,
     GetSharedVariable=function(_,key) return shared[key] end}
 local originalLoadfile=loadfile
-debug.getinfo=function() return {source='@C:/Mods/_ModCore_1_Settings/Scripts/dmm_extension.lua'} end
+debug.getinfo=function() return {source='@C:/Mods/1_ModCore_Settings/Scripts/dmm_extension.lua'} end
 loadfile=function(path)
-    loaded[#loaded+1]=path
     local name=assert(path:match('([^/\\]+)%.lua$'))
+    -- Logging is real: it is loaded from the extension's folder before any module.
+    if name=='mc_log' or name=='log_events' then return originalLoadfile('Scripts/'..name..'.lua') end
+    loaded[#loaded+1]=path
     return function()
         if name=='menu_pages' then
             return {reader=function() return 'reader' end,install=function(...)
@@ -26,6 +29,12 @@ loadfile=function(path)
                 manifest=function(_,context) return 'manifest for '..context.page end,
                 install=function(...) installs[#installs+1]={name=name,args={...}} end}
         end
+        if name=='field_types' then
+            return {new=function()
+                return {register=function(_,typeName,editor) fieldTypes.registered[typeName]=editor end,
+                    install=function(_,modules) fieldTypes.modules=modules;fieldTypes.order=#installs end}
+            end}
+        end
         if name=='dmm_lifecycle' then
             return {publisher=function() return {publish=function(_,event) installs[#installs+1]={name='publish',event=event} end} end}
         end
@@ -39,11 +48,16 @@ assert(extension.id=='ModCoreSettings' and extension.apiVersion==1 and type(exte
 local choices,controls,pages={},{},{}
 local callbacks={}
 local events={on=function(_,name,callback) callbacks[name]=callback end}
-extension.install({version=1,choices=choices,controls=controls,pages=pages,events=events})
+local settingsApi={}
+extension.install({version=1,choices=choices,controls=controls,pages=pages,events=events,settingsApi=settingsApi})
 local order={'navigation','mapped_presets','presentation','browser_groups','init_config','dmm_lifecycle',
- 'menu_contributions','menu_pages','page_links','menu_slots','page_hooks'}
+ 'menu_contributions','menu_pages','page_links','menu_slots','page_hooks','field_types','keybind_editor','standard_controls'}
 assert(#loaded==#order)
 for n,name in ipairs(order) do assert(loaded[n]:match(name..'%.lua$'),'load '..n) end
+-- Field types install innermost, before any other wrapper.
+assert(fieldTypes.order==0 and fieldTypes.registered.keybind and fieldTypes.modules.choices==choices
+ and fieldTypes.modules.controls==controls and fieldTypes.modules.settingsApi==settingsApi
+ and fieldTypes.modules.standardControls,'keybind registered and installed on DMM modules first')
 assert(installs[1].args[1]==choices)
 assert(installs[2].args[1]==choices and installs[2].args[2]==controls)
 assert(installs[3].args[1]==choices and installs[3].args[2]==controls and installs[3].args[3]==pages)

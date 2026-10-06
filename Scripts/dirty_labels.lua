@@ -90,16 +90,6 @@ end
 
 function M.new(log)
     local controller={records={},busy=false}
-    -- Our decoration construction writes presentation text, never DMM values.
-    -- Do not rediscover rows for those synchronous SetText notifications.
-    function controller:construct(fn)
-        local previous=self.busy
-        self.busy=true
-        local result=table.pack(pcall(fn))
-        self.busy=previous
-        if not result[1] then error(result[2],0) end
-        return table.unpack(result,2,result.n)
-    end
     local function displayed(state) return state.dirty and not state.suppressed end
     local textLibrary
     local function setText(widget,text)
@@ -137,21 +127,11 @@ function M.new(log)
         return ok,result
     end
     local function renderRecord(resolve,record)
-        local primary=record.primary or record
-        local shell,label=resolve(primary.shell),resolve(primary.label)
+        local shell,label=resolve(record.shell),resolve(record.label)
         if not shell or not label then return end
         local _,state=readMarker(shell)
         if not state then return end
-        local combined=displayed(state)
-        if primary.peer then
-            local peerShell=resolve(primary.peer.shell)
-            if peerShell then local _,peer=readMarker(peerShell);combined=combined or (peer and displayed(peer)) end
-        end
-        render(label,state,combined,shell)
-        if record.primary then
-            local ownShell,ownLabel=resolve(record.shell),resolve(record.label)
-            if ownShell and ownLabel then local _,own=readMarker(ownShell);if own then render(ownLabel,own,displayed(own),ownShell) end end
-        end
+        render(label,state,displayed(state),shell)
     end
     function controller:close()
         self.records={};self.path=nil;self.allowed=nil;self.routes=nil;self.live=nil;self.bound=false
@@ -165,9 +145,8 @@ function M.new(log)
         self:close();self.path=path;self.allowed=allowed;self.live=live
         return true
     end
-    function controller:bind(rows,routes,pairsByRow)
+    function controller:bind(rows,routes)
         protected(function()
-            local byRow={}
             for _,row in ipairs(rows) do
                 local shell=row.overlay or row.shell
                 if not (row.dmmSetting and row.dmmSetting.mcHeader
@@ -217,22 +196,13 @@ function M.new(log)
                             end)
                             if not ok then pcall(star.RemoveFromParent,star);error(err) end
                         end
-                        self.records[valueId]=record;byRow[row]=record
+                        self.records[valueId]=record
                         setText(row.valueWidget,clean)
                         render(row.labelWidget,state,displayed(state),shell)
                     end
                 end
             end
             self.bound=true
-            for primary,peer in pairs(pairsByRow or {}) do
-                local a,b=byRow[primary],byRow[peer]
-                if a and b then
-                    a.peer=b;b.primary=a
-                    local _,sa=readMarker(primary.overlay or primary.shell)
-                    local _,sb=readMarker(peer.overlay or peer.shell)
-                    render(primary.labelWidget,sa,displayed(sa) or displayed(sb),primary.overlay or primary.shell)
-                end
-            end
             self.routes=routes
         end)
     end

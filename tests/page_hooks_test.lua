@@ -1,5 +1,8 @@
 package.path='Scripts/?.lua;'..package.path
-local Choices=dofile(assert(os.getenv('DMM_CHOICES_PATH')))
+-- Needs the real DMM parser, which CI does not have; skip without it.
+local choicesPath=os.getenv('DMM_CHOICES_PATH')
+if not choicesPath then print('SKIP page hooks: DMM_CHOICES_PATH is not set');return end
+local Choices=dofile(choicesPath)
 local Hooks=require('page_hooks')
 local Menu=require('menu_contributions')
 local Pages=require('menu_pages')
@@ -13,7 +16,7 @@ end
 
 -- Validation and transport: hooks pages need an absolute .lua path and a configDirectory,
 -- carry no manifest or link, and select contract 3.
-local hooksPage={id='MCC',name='Controls',attach='_ModCore_2_Controls',
+local hooksPage={id='MCC',name='Controls',attach='2_ModCore_Controls',
     hooks='/mods/mcc/Scripts/mcs_page.lua',configDirectory='/mods/mcc'}
 assert(Menu.validate('MCC',{pages={hooksPage}}))
 for _,case in ipairs({
@@ -123,7 +126,7 @@ local function placeholder(folder)
 end
 local logs={}
 local function report(event,detail) logs[#logs+1]=event..' '..tostring(detail) end
-local providers={placeholder('_ModCore_2_Controls')}
+local providers={placeholder('2_ModCore_Controls')}
 local state={}
 local contribution={id='MCC',generation=1,pages={hooksPage}}
 Pages.apply(providers,{contribution},Choices.parse,state,report,nil,hooked)
@@ -145,7 +148,7 @@ Pages.apply(providers,{broken,contribution},Choices.parse,state,report,nil,faili
 assert(#providers==1 and providers[1].id=='MCC' and logs[#logs]:find('Broken: hooks file failed',1,true),
     'A failing hooks page skips only its contributor')
 Pages.apply(providers,{contribution},Choices.parse,state,report,nil,nil)
-assert(providers[1].id=='detected:ue4ss:_modcore_2_controls' and logs[#logs]:find('page hooks unavailable',1,true),
+assert(providers[1].id=='detected:ue4ss:2_modcore_controls' and logs[#logs]:find('page hooks unavailable',1,true),
     'Without a hooks loader the page is skipped')
 gamepad=false
 Pages.apply(providers,{contribution},Choices.parse,state,report,nil,hooked)

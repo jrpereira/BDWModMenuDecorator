@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.0.1
+
+- Release packages include `enabled.txt`, so the mod is enabled when installed.
+- `mcType=tab` choices are outlined and sit 4 pixels apart; the selected choice's
+  outline is bright.
+- `mcWrap=1` shows a read-only value as 13pt text in a wider column, broken after
+  commas below 34 characters, in a row that grows to fit.
+- `mcType=cycle` shows a picker as one 13pt button with only the current choice,
+  in the keybind editor's key column at the key box's width; a click moves to the
+  next choice.
+- The keybind editor reads Mode, key, X. A bound key is 16pt in the active tab
+  yellow, in a box at full strength; Mode and X backgrounds are at 30% of a
+  standard control's, 8 pixels from the key. Unbound with a default control, the
+  key box shows a small gray "default" (9pt) at its top and the default keys
+  (11pt, dimmed white) flush with its bottom, at half strength, replacing
+  the `Default: <keys>` caption. A default control that
+  cannot be resolved yet is looked up again on the next render instead of never.
+  Mode is 66 pixels wide with a background 20% stronger than X's. X rests at 70%
+  and lights up in the active tab yellow under the pointer. The "optional"
+  placeholder is 14pt.
+- Keybind rows name the mouse buttons Left, Right and Middle Button, and numpad
+  digits NumPad 0 to NumPad 9. Saved values keep the engine key names.
+- A keybind's default trigger is the first one listed in `Triggers`, instead of
+  Tap whenever Tap is listed.
+- Keybind and other field-editor rows indent like toggle rows. Their labels were
+  indented twice, once on the row content and again on the label.
+- Log at levels TRACE, DEBUG, INFO, WARN, ERROR and CRITICAL, writing WARN and above
+  by default; `log_level.txt` in the mod folder sets the level. The vendorable
+  `Scripts/mc_log.lua` provides the same logger to other mods. Row errors are now
+  written as warnings; the startup notice is INFO.
 - Add menu contributions: other mods publish generated pages as data through the
   vendorable `menu_contributions.lua` client instead of installing DMM extensions.
 - Add `mcLinkPage` for navigation pickers that open another page; it replaces
@@ -8,10 +38,21 @@
 - Remove tab-picker contours and inset all tab choices, including provider links,
   24 pixels from the right edge.
 - Give every tab-style picker option a light one-pixel outline so adjacent choices remain visibly aligned.
-- Rename the installed mod folder to `_ModCore_1_Settings`.
-
-## Unreleased
-
+- Rename the installed mod folder to `1_ModCore_Settings`.
+- Remove the slider-based keybind (`mcType=keybind` on an integer setting, with
+  `mcOptional`, `mcDefaultControl`, `mcMode` and `mcGroupedBy`) and `Pair=` mode
+  pickers, with their key capture, click routing and virtual-key table, and the
+  example mod that used them. `Type=keybind` replaces them. Only `mcType=tab`
+  remains as an `mcType`.
+- Add setting types DMM does not know, starting with `Type=keybind`: one setting
+  holding `none` or `<FKey>|<trigger>` as text, whose row carries the key box, the
+  trigger control, the clear button and the default keys. DMM keeps building the
+  row and owning Apply, Reset and dirty state; the editor reads and fills its own
+  controls.
+- Stop editing Dawnwalker Mod Menu's files. ModCoreSettings keeps DMM's
+  `main.lua` as `main.dmm.lua` and starts it through a small launcher that hooks
+  DMM's modules first, recreating the lifecycle events from outside DMM. DMM
+  updates and redeploys are picked up automatically; a failed hook never stops DMM.
 - Rename runtime markers, DMM lifecycle identifiers, and initialization file prefixes from `kem` to `mc`.
 - Add 20 pixels of bottom spacing beneath the page header.
 - Add slot rows: a page marks a read-only row with `mcSlot=<name>` and other
@@ -38,6 +79,17 @@
 - Add page hooks: a contributed page may name a Lua file that generates its
   manifest on every menu build and optionally owns its storage (`load` and
   `apply`), so no mod needs its own DMM extension (descriptor contract 3).
+- A row whose identity is missing, mismatched, duplicated or from another page,
+  whose key decoration fails, or whose paired or grouping row has one of these
+  problems shows only its label and a short error. The page's other rows still
+  work; previously one such row left the whole page undecorated.
+- An unbound optional key shows `optional` in italics, dim yellow when it has an
+  `mcDefaultControl` and dim gray otherwise; the `Optional` marker is gone.
+  With a default control, `Default: <keys>` shows beside it: every keyboard key
+  bound to the action in the Settings key profile, so they show in menus and
+  outside combat too. With no keyboard key bound, nothing shows beside it.
+- Move the README and changelog into `docs/`; release packages publish every
+  document from `docs/` at the mod root.
 
 ## v0.3.1
 

@@ -1,3 +1,4 @@
+package.path='Scripts/?.lua;'..package.path
 local captured={}
 local installed=false
 local originalPrint=print

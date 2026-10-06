@@ -28,10 +28,10 @@ local function report(event,detail) logs[#logs+1]=event..' '..detail end
 -- Placement: heading attached to its own placeholder, children under it in publish order,
 -- module pages replace placeholders or follow real mods, and unanchored pages sort by name.
 local function base()
-    return {placeholder('_ModCore_3_Templates'),mod('Alpha'),placeholder('Beta'),mod('Gamma'),mod('Zeta')}
+    return {placeholder('3_ModCore_Templates'),mod('Alpha'),placeholder('Beta'),mod('Gamma'),mod('Zeta')}
 end
 local mct={id='MCT',pages={
-    {id='MCT',name='ModCore Templates',attach='_ModCore_3_Templates'},
+    {id='MCT',name='ModCore Templates',attach='3_ModCore_Templates'},
     {id='MCT.z',name='Zebra category',under='MCT',manifest=manifest,configDirectory='/mct/cache'},
     {id='MCT.a',name='Apple category',under='MCT',manifest=manifest,configDirectory='/mct/cache'},
     {id='MCT.a.sub',name='Sub',under='MCT.a',manifest=manifest,configDirectory='/mct/cache'},
@@ -67,7 +67,7 @@ expect(providers,ids(base()),'withdrawn')
 
 -- A hidden page attached to a detected placeholder keeps that placeholder hidden.
 providers=base()
-Pages.apply(providers,{{id='MCT',pages={{id='MCT',name='ModCore Templates',attach='_ModCore_3_Templates',visible=false},
+Pages.apply(providers,{{id='MCT',pages={{id='MCT',name='ModCore Templates',attach='3_ModCore_Templates',visible=false},
     {id='MCT.real',name='Real',attach='Alpha',visible=false}}}},parse,state,report)
 expect(providers,'Alpha,detected:ue4ss:beta,Gamma,Zeta','hidden page claims placeholder only')
 Pages.apply(providers,{},parse,state,report)

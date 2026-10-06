@@ -19,7 +19,7 @@ end
 
 local manifest='[Setting.Speed]\nId=Speed\nType=picker\nConfigFile=config.ini\n'
 local pages={
-    {id='MCT',name='ModCore Templates',attach='_ModCore_3_Templates',description='Line one\nLine \\two'},
+    {id='MCT',name='ModCore Templates',attach='3_ModCore_Templates',description='Line one\nLine \\two'},
     {id='MCT.vehicles',name='Vehicles',under='MCT',manifest=manifest,configDirectory='C:/Mods/MCT/Scripts/cache'},
     {id='MCT.module.Visual',name='Visual',attach='Visual',group='module',author='A',version='1.2',
         manifest=manifest,configDirectory='/mods/visual',visible=false},

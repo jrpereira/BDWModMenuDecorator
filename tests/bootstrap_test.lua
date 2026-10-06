@@ -1,219 +1,135 @@
 local Bootstrap=assert(loadfile('Scripts/dmm_bootstrap.lua'))()
 local test=Bootstrap._test
+local DMM='C:/Mods/DawnwalkerModMenu/Scripts/'
+local MCS='C:/Mods/1_ModCore_Settings/Scripts/'
+local MAIN,ORIGINAL,STAGE=DMM..'main.lua',DMM..test.original,DMM..test.stage
 
-local originals={['main.lua']='main-original',['controls.lua']='controls-original',['pages.lua']='pages-original'}
-local accepted={}
-local completed={}
-local transforms={}
-for name,content in pairs(originals) do
-    accepted[name]=test.signature(content)
-    transforms[name]=function(value) return value..'\npatched' end
-    completed[name]=test.signature(content..'\npatched')
-end
-
-local function directoryTree(files,options)
-    options=options or {}
-    local entries={}
-    for _,name in ipairs({'main.lua','controls.lua','pages.lua'}) do
-        entries[#entries+1]={__name=name,__absolute_path='C:/DMM/Scripts/'..name}
+local function directoryTree(installed)
+    local mods={__name='Mods'}
+    if installed then
+        mods.DawnwalkerModMenu={__name='DawnwalkerModMenu',Scripts={__name='Scripts',
+            __files={{__name='main.lua',__absolute_path=MAIN}}}}
     end
-    local mods={__name='Mods',DawnwalkerModMenu={__name='DawnwalkerModMenu',Scripts={__name='Scripts',__files=entries}}}
     return {Game={__name='Game',Binaries={__name='Binaries',Win64={__name='Win64',ue4ss={__name='ue4ss',Mods=mods}}}}}
 end
 
 local function environment(seed,options)
     options=options or {}
-    local files={}
+    local files,shared,scheduled,writes={},{},{},0
     for path,value in pairs(seed or {}) do files[path]=value end
-    local shared={}
-    local scheduled={}
-    local writes=0
-    local renames=0
-    local env={supported=accepted,patched=completed,patchers=transforms}
-    env.directories=function() return directoryTree(files,options) end
+    local env={scripts=options.scripts or MCS}
+    env.directories=function() return directoryTree(options.missing~=true) end
     env.read=function(path) return files[path] end
-    env.write=function(path,value)
-        writes=writes+1
-        if options.failWrite==writes then return nil,'injected write failure' end
-        files[path]=options.corruptWrite==writes and 'corrupt stage' or value;return true
-    end
-    env.remove=function(path)
-        files[path]=nil;return true
-    end
+    env.write=function(path,value) writes=writes+1;files[path]=value;return true end
+    env.remove=function(path) files[path]=nil;return true end
     env.rename=function(source,target)
-        renames=renames+1
-        if options.requireAllStaged and renames==1 then
-            for _,name in ipairs({'main.lua','controls.lua','pages.lua'}) do
-                assert(files['C:/DMM/Scripts/'..name..test.newSuffix],name..' was not staged before backup movement')
-            end
-            assert(files['C:/DMM/Scripts/extension_events.lua'..test.newSuffix],'extension payload was not staged before backup movement')
-        end
-        if options.failRenameSource==source then return nil,'injected rename failure' end
+        if options.failRename==source..'>'..target then return nil,'injected rename failure' end
         if files[source]==nil or files[target]~=nil then return nil,'rename rejected' end
         files[target]=files[source];files[source]=nil;return true
     end
     env.get=function(key) return shared[key] end
     env.set=function(key,value) shared[key]=value end
     env.defer=function(callback) scheduled[#scheduled+1]=callback end
-    return env,files,shared,scheduled
+    return env,files,shared,scheduled,function() return writes end
 end
-
-local function seedOriginals()
-    local result={}
-    for name,value in pairs(originals) do result['C:/DMM/Scripts/'..name]=value end
-    return result
-end
-
-local function drain(scheduled,limit)
-    for _=1,limit or 40 do
-        if #scheduled==0 then return end
-        table.remove(scheduled,1)()
-    end
-    assert(#scheduled==0,'scheduler did not settle')
-end
-
-do
-    local seed=seedOriginals();seed['C:/Previous/enabled.txt']='enabled'
-    local env,files=environment(seed)
-    assert(Bootstrap.run(function() end,function() error('unexpected init') end,env)=='waiting')
-    assert(files['C:/Previous/enabled.txt']=='enabled' and files['C:/Previous/deprecated.txt']==nil,
-        'KEM must not migrate or disable a previous mod')
-end
-
-do
+local function recorder()
     local events={}
-    local env=environment({})
-    env.directories=function() return {Game={__name='Game'}} end
-    assert(Bootstrap.run(function(name) events[#events+1]=name end,function() error('unexpected init') end,env)==false)
-    assert(events[1]=='DMM_REQUIRED')
+    return events,function(event,detail) events[#events+1]=event..':'..tostring(detail) end
+end
+local function has(events,prefix)
+    for _,entry in ipairs(events) do if entry:sub(1,#prefix)==prefix then return entry end end
 end
 
-do
-    local event
-    local env=environment({})
-    env.directories=function() return {bad='shape'} end
-    assert(Bootstrap.run(function(name) event=name end,function() error('unexpected init') end,env)==false)
-    assert(event=='DMM_REQUIRED')
-end
+-- A fresh DMM: its main is kept as main.dmm.lua and the launcher takes main.lua.
+local env,files,shared,scheduled=environment({[MAIN]='dmm main'})
+local events,log=recorder()
+local initialized=0
+assert(Bootstrap.run(log,function() initialized=initialized+1 end,env)=='waiting')
+assert(files[ORIGINAL]=='dmm main' and files[MAIN]==test.launcher(DMM,MCS) and files[STAGE]==nil)
+assert(has(events,'DMM_LAUNCHER_INSTALLED:DawnwalkerModMenu launcher installed'))
+-- DMM already started this boot with its own main, so the hooks are not there yet.
+scheduled[1]()
+assert(initialized==0 and has(events,'DMM_RESTART_REQUIRED'))
+print('PASS a fresh DMM gets the launcher and asks for a restart when DMM already started')
 
-do
-    local seed=seedOriginals();seed['C:/DMM/Scripts/main.lua']='unknown'
-    local env=environment(seed)
-    local event
-    assert(Bootstrap.run(function(name) event=name end,function() error('unexpected init') end,env)==false)
-    assert(event=='DMM_INCOMPATIBLE')
-end
+-- Next boot: the launcher is current, nothing is written, and the hooks report ready.
+local writes
+env,files,shared,scheduled,writes=environment({[MAIN]=test.launcher(DMM,MCS),[ORIGINAL]='dmm main'})
+events,log=recorder()
+assert(Bootstrap.run(log,function() initialized=initialized+1 end,env)=='waiting')
+assert(writes()==0 and not has(events,'DMM_LAUNCHER_INSTALLED'))
+shared[test.readyKey]='1'
+scheduled[1]()
+assert(initialized==1 and shared[test.claimKey] and #events==0)
+print('PASS a current launcher is left alone and the hooks complete the handshake')
 
-do
-    local env,files,shared,scheduled=environment(seedOriginals(),{requireAllStaged=true})
-    local events={}
-    assert(Bootstrap.run(function(name) events[#events+1]=name end,function() error('unexpected init') end,env)=='waiting')
-    assert(events[1]=='DMM_PATCHED')
-    for name,value in pairs(originals) do
-        assert(files['C:/DMM/Scripts/'..name]==value..'\npatched')
-        assert(files['C:/DMM/Scripts/'..name..test.backupSuffix]==value)
-    end
-    assert(files['C:/DMM/Scripts/extension_events.lua']==test.payload)
-    assert(#scheduled==1,'bootstrap must queue one startup callback')
-    drain(scheduled)
-    assert(events[#events]=='DMM_RESTART_REQUIRED')
-    assert(shared[test.claimKey]==nil)
-end
+-- When ModCoreSettings starts first, DMM loads the new launcher in the same boot.
+env,files,shared,scheduled=environment({[MAIN]='dmm main'})
+events,log=recorder()
+assert(Bootstrap.run(log,function() initialized=initialized+1 end,env)=='waiting')
+shared[test.readyKey]='1'
+scheduled[1]()
+assert(initialized==2 and not has(events,'DMM_RESTART_REQUIRED'))
+print('PASS installing before DMM starts needs no restart')
 
-do
-    local seed=seedOriginals()
-    local env,files=environment(seed,{failRenameSource='C:/DMM/Scripts/controls.lua'..test.newSuffix})
-    local event,detail
-    assert(Bootstrap.run(function(name,value) event,detail=name,value end,function() error('unexpected init') end,env)==false)
-    assert(event=='DMM_PATCH_FAILED' and detail:find('rolled back',1,true))
-    for name,value in pairs(originals) do assert(files['C:/DMM/Scripts/'..name]==value) end
-    assert(files['C:/DMM/Scripts/extension_events.lua']==nil)
-    for name in pairs(originals) do assert(files['C:/DMM/Scripts/'..name..test.newSuffix]==nil) end
-    assert(files['C:/DMM/Scripts/extension_events.lua'..test.newSuffix]==nil)
-end
+-- A DMM update puts its new main back; the previous copy of its main is replaced.
+env,files=environment({[MAIN]='dmm main 2',[ORIGINAL]='dmm main'})
+assert(test.install(env,DMM,MCS)=='installed' and files[ORIGINAL]=='dmm main 2' and files[MAIN]==test.launcher(DMM,MCS))
+print('PASS a DMM update is picked up and its new main is kept')
 
-do
-    local seed=seedOriginals()
-    local env,files=environment(seed,{failWrite=2})
-    local event,detail
-    assert(Bootstrap.run(function(name,value) event,detail=name,value end,function() error('unexpected init') end,env)==false)
-    assert(event=='DMM_PATCH_FAILED' and detail:find('live files unchanged',1,true))
-    for name,value in pairs(originals) do
-        assert(files['C:/DMM/Scripts/'..name]==value and files['C:/DMM/Scripts/'..name..test.backupSuffix]==nil)
-        assert(files['C:/DMM/Scripts/'..name..test.newSuffix]==nil)
-    end
-end
+-- A moved ModCoreSettings rewrites only the launcher.
+env,files=environment({[MAIN]=test.launcher(DMM,MCS),[ORIGINAL]='dmm main'})
+local moved='D:/Other/1_ModCore_Settings/Scripts/'
+assert(test.install(env,DMM,moved)=='updated' and files[MAIN]==test.launcher(DMM,moved) and files[ORIGINAL]=='dmm main')
+print('PASS a changed path rewrites the launcher and keeps DMM main')
 
-do
-    local seed=seedOriginals()
-    local env,files=environment(seed,{corruptWrite=2})
-    local event,detail
-    assert(Bootstrap.run(function(name,value) event,detail=name,value end,function() error('unexpected init') end,env)==false)
-    assert(event=='DMM_PATCH_FAILED' and detail:find('live files unchanged',1,true))
-    for name,value in pairs(originals) do
-        assert(files['C:/DMM/Scripts/'..name]==value)
-        assert(files['C:/DMM/Scripts/'..name..test.newSuffix]==nil,'failed verification leaked a stage')
-    end
-end
+-- An interrupted install that left main.lua missing restores DMM's main first.
+env,files=environment({[ORIGINAL]='dmm main',[STAGE]='partial'})
+assert(test.install(env,DMM,MCS)=='installed' and files[ORIGINAL]=='dmm main' and files[MAIN]==test.launcher(DMM,MCS)
+    and files[STAGE]==nil)
+print('PASS an interrupted install is recovered')
 
-do
-    local seed=seedOriginals()
-    seed['C:/DMM/Scripts/main.lua']=nil
-    seed['C:/DMM/Scripts/main.lua'..test.backupSuffix]=originals['main.lua']
-    for name,value in pairs(originals) do seed['C:/DMM/Scripts/'..name..test.newSuffix]=value..'\npatched' end
-    seed['C:/DMM/Scripts/extension_events.lua'..test.newSuffix]=test.payload
-    local env,files=environment(seed)
-    assert(Bootstrap.run(function() end,function() error('unexpected init') end,env)=='waiting')
-    for name,value in pairs(originals) do
-        assert(files['C:/DMM/Scripts/'..name]==value..'\npatched')
-        assert(files['C:/DMM/Scripts/'..name..test.backupSuffix]==value)
-        assert(files['C:/DMM/Scripts/'..name..test.newSuffix]==nil)
-    end
-    assert(files['C:/DMM/Scripts/extension_events.lua']==test.payload)
-    assert(files['C:/DMM/Scripts/extension_events.lua'..test.newSuffix]==nil)
-end
+-- Failing to promote the launcher puts DMM's own main back as main.lua.
+env,files=environment({[MAIN]='dmm main'},{failRename=STAGE..'>'..MAIN})
+local ok,err=pcall(test.install,env,DMM,MCS)
+assert(not ok and tostring(err):find('restored',1,true) and files[MAIN]=='dmm main' and files[ORIGINAL]==nil and files[STAGE]==nil)
+print('PASS a failed install leaves DMM runnable')
 
-do
-    local seed=seedOriginals()
-    for name,value in pairs(originals) do seed['C:/DMM/Scripts/'..name]=value..'\npatched' end
-    seed['C:/DMM/Scripts/extension_events.lua']=test.payload
-    local env=environment(seed)
-    local event
-    assert(Bootstrap.run(function(name) event=name end,function() error('unexpected init') end,env)==false)
-    assert(event=='DMM_INCOMPATIBLE','patched DMM without verified baselines must be rejected')
-end
+-- A launcher without DMM's main is reported and nothing is changed.
+env,files=environment({[MAIN]=test.launcher(DMM,MCS)})
+events,log=recorder()
+assert(Bootstrap.run(log,function() end,env)==false and has(events,'DMM_LAUNCHER_FAILED') and files[MAIN]==test.launcher(DMM,MCS))
+-- Without DMM there is nothing to do.
+env=environment({},{missing=true})
+events,log=recorder()
+assert(Bootstrap.run(log,function() end,env)==false and has(events,'DMM_REQUIRED'))
+print('PASS missing DMM files are reported without changes')
 
-do
-    local seed=seedOriginals()
-    for name,value in pairs(originals) do
-        seed['C:/DMM/Scripts/'..name]=value..'\npatched'
-        seed['C:/DMM/Scripts/'..name..test.backupSuffix]=value
-    end
-    seed['C:/DMM/Scripts/extension_events.lua']=test.payload
-    local env,_,shared,scheduled=environment(seed)
-    shared[test.readyKey]='1'
-    local initialized=0
-    assert(Bootstrap.run(function() end,function() initialized=initialized+1;return true end,env)=='waiting')
-    assert(initialized==0 and #scheduled==1,'initialization must wait for the startup barrier')
-    drain(scheduled)
-    assert(initialized==1 and shared[test.claimKey]~=nil)
-    assert(Bootstrap.run(function() end,function() initialized=initialized+1;return true end,env)=='waiting')
-    drain(scheduled)
-    assert(initialized==1)
+-- The launcher itself: hooks run only while ModCoreSettings is enabled, and
+-- DMM's own main always runs, even when the hooks fail.
+local function launch(enabled,hooks)
+    local calls,printed={},{}
+    local sandbox={
+        io={open=function(path) calls[#calls+1]='open '..path;return enabled and {close=function() end} or nil end},
+        loadfile=function(path) calls[#calls+1]='load '..path;return function() return hooks end end,
+        dofile=function(path) calls[#calls+1]='run '..path end,
+        pcall=pcall,assert=assert,tostring=tostring,debug=debug,
+        print=function(text) printed[#printed+1]=text end,
+    }
+    assert(load(test.launcher(DMM,MCS),'@'..DMM..'main.lua','t',sandbox))()
+    return calls,printed
 end
-
-do
-    local seed=seedOriginals()
-    for name,value in pairs(originals) do
-        seed['C:/DMM/Scripts/'..name]=value..'\npatched'
-        seed['C:/DMM/Scripts/'..name..test.backupSuffix]=value
-    end
-    seed['C:/DMM/Scripts/extension_events.lua']=test.payload
-    local env,_,shared,scheduled=environment(seed)
-    local initialized=0
-    assert(Bootstrap.run(function() end,function() initialized=initialized+1;return true end,env)=='waiting')
-    shared[test.readyKey]='1';drain(scheduled)
-    assert(initialized==1 and #scheduled==0,'readiness must initialize once without a retry timer')
-end
-
-print('PASS DMM bootstrap handles compatibility, transaction rollback, handshake and duplicate initialization')
+local launched=0
+local calls=launch(true,{launch=function() launched=launched+1 end})
+-- Paths are relative to the launcher's own folder, so the Mods folder can move.
+assert(launched==1 and calls[1]=='open '..DMM..'../../1_ModCore_Settings/enabled.txt'
+    and calls[2]=='load '..DMM..'../../1_ModCore_Settings/Scripts/dmm_extension.lua' and calls[3]=='run '..ORIGINAL)
+calls=launch(false,{launch=function() launched=launched+1 end})
+assert(launched==1 and #calls==2 and calls[2]=='run '..ORIGINAL)
+local printed
+calls,printed=launch(true,{launch=function() error('broken hooks') end})
+assert(calls[#calls]=='run '..ORIGINAL and printed[1]:find('DMM hooks failed',1,true))
+local text=test.launcher(DMM,MCS)
+assert(text:find('Shoutout to DMM',1,true)==4 and text:find(test.mark,1,true)<512 and not text:find('C:/Mods',1,true))
+assert(test.launcher('C:/Mods/DawnwalkerModMenu/Scripts/','D:/Other/1_ModCore_Settings/Scripts/'):find('"D:/Other/1_ModCore_Settings/enabled.txt"',1,true))
+print('PASS the launcher hooks in only while enabled and always runs DMM main')

@@ -48,8 +48,12 @@ function M.arrange(providers)
     return providers
 end
 
-function M.install(pages)
+-- report(event,detail) (optional) receives failures.
+function M.install(pages, report)
     if pages.mcBrowserGroupsVersion then return false end
+    report = report or function(event, detail)
+        print('[ModCoreSettings] ' .. event .. ' ' .. tostring(detail) .. '\n')
+    end
     assert(type(pages)=='table' and type(pages.build)=='function', 'DMM pages API unavailable')
     local build = pages.build
     pages.build = function(tree, providers, status, api)
@@ -57,21 +61,34 @@ function M.install(pages)
         local page = build(tree, providers, status, api)
         if type(page)=='table' and type(page.setFilter)=='function' then
             local setFilter = page.setFilter
+            -- Compatible-only filtering keeps the ModCore group headings, which have
+            -- no settings of their own. A failure leaves DMM's own filtering in place.
             function page:setFilter(compatibleOnly)
                 setFilter(self, compatibleOnly)
                 if not self.compatibleOnly then return end
-                local rows = {}
-                for _, row in ipairs(self.allRows) do
-                    local provider = providers[row.providerIndex]
-                    if provider.mcBrowserHeading or not provider.noSettings then
-                        rows[#rows + 1] = row
-                        row.index = #rows
+                local ok, err = pcall(function()
+                    local rows = {}
+                    for _, row in ipairs(self.allRows) do
+                        local provider = providers[row.providerIndex]
+                        local shown = provider.mcBrowserHeading or not provider.noSettings
+                        if shown then
+                            rows[#rows + 1] = row
+                            row.index = #rows
+                        end
+                        row.wrapper:SetVisibility(shown and 0 or 1)
                     end
-                end
-                self.rows = rows
-                self:refreshHint()
-                self.scroll:ScrollToStart()
-                self:window(0, true)
+                    self.rows = rows
+                    self:refreshHint()
+                    self.scroll:ScrollToStart()
+                    self.empty:SetVisibility(#rows == 0 and 0 or 1)
+                    for i, row in ipairs(rows) do
+                        if i > 1 then row.widget:SetNavigationRuleExplicit(2, rows[i - 1].widget)
+                        else row.widget:SetNavigationRuleBase(2, 3) end
+                        if i < #rows then row.widget:SetNavigationRuleExplicit(3, rows[i + 1].widget)
+                        else row.widget:SetNavigationRuleBase(3, 3) end
+                    end
+                end)
+                if not ok then report('BROWSER_GROUPS_FAILED', err) end
             end
             page:setFilter(page.compatibleOnly)
         end

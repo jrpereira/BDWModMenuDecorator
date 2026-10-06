@@ -1,4 +1,4 @@
--- Resolve the keyboard key currently assigned to a standard Enhanced Input action.
+-- Resolve the keyboard keys the player assigned to a standard Enhanced Input action.
 local M={}
 
 local function unwrap(value)
@@ -46,40 +46,68 @@ local function name(value)
     return ok and tostring(result) or tostring(value)
 end
 
+-- Returns the sorted keyboard keys the player bound to the action in the Settings
+-- key profile. The profile holds them whether or not an applied context maps the
+-- action, as for the combat toggle outside combat or in the pause menu.
 function M.resolve(actionId,environment)
     assert(type(actionId)=='string' and actionId:match('%S'),'standard control ID required')
     local e=environment or {unwrap=unwrap,valid=valid,full=full,path=path,property=property,
-        each=each,name=name,controllers=function()
-            local ok,items=pcall(FindAllOf,'BP_PlayerController_C')
+        each=each,name=name,
+        subsystems=function()
+            local ok,items=pcall(FindAllOf,'EnhancedInputLocalPlayerSubsystem')
             return ok and type(items)=='table' and items or {}
-        end}
-    local found={}
-    for _,controller in ipairs(e.controllers()) do
-        if e.valid(controller) then
-            local playerInput=e.property(controller,'PlayerInput')
-            if e.valid(playerInput) then
-                e.each(e.property(playerInput,'AppliedInputContexts') or {},function(context)
-                    if not (e.path(context) or ''):match('^/Game/') then return end
-                    e.each(e.property(context,'Mappings') or {},function(mapping)
-                        local action=e.property(mapping,'Action')
-                        local id=(e.full(action) or ''):match('([^%.:/%s]+)$')
-                        if id~=actionId then return end
-                        local key=e.property(e.property(mapping,'Key'),'KeyName')
-                        local keyName=e.name(key)
-                        if keyName and keyName~='' and not keyName:find('^Gamepad_') then
-                            found[keyName]=true
-                        end
-                    end)
-                end)
-            end
+        end,
+        actions=function()
+            local ok,items=pcall(FindAllOf,'InputAction')
+            return ok and type(items)=='table' and items or {}
+        end,
+        call=function(object,method) return object[method](object) end}
+    local function shortName(object) return (e.full(object) or ''):match('([^%.:/%s]+)$') end
+    local profile
+    for _,subsystem in ipairs(e.subsystems()) do
+        if e.valid(subsystem) then
+            local ok,candidate=pcall(function()
+                local settings=e.unwrap(e.call(subsystem,'GetUserSettings'))
+                return e.valid(settings) and e.unwrap(e.call(settings,'GetCurrentKeyProfile')) or nil
+            end)
+            if ok and e.valid(candidate) then profile=candidate;break end
         end
     end
-    local result
-    for keyName in pairs(found) do
-        if result and result~=keyName then return nil,'multiple keyboard bindings: '..actionId end
-        result=keyName
+    if not profile then return nil,'key profile unavailable: '..actionId end
+    local function collect(matches)
+        local found={}
+        e.each(e.property(profile,'PlayerMappedKeys') or {},function(_,row)
+            e.each(e.property(row,'Mappings') or {},function(entry)
+                if matches(entry) then
+                    local keyName=e.name(e.property(e.property(entry,'CurrentKey'),'KeyName'))
+                    if keyName and keyName~='' and keyName~='None' and not keyName:find('^Gamepad_') then
+                        found[keyName]=true
+                    end
+                end
+            end)
+        end)
+        local result={}
+        for keyName in pairs(found) do result[#result+1]=keyName end
+        table.sort(result)
+        return result
     end
-    if result then return result end
+    local result=collect(function(entry)
+        return shortName(e.property(entry,'AssociatedInputAction'))==actionId
+    end)
+    if #result==0 then
+        -- Profile rows may name the action only through its mappable key settings.
+        local mappingName
+        for _,action in ipairs(e.actions()) do
+            if e.valid(action) and shortName(action)==actionId then
+                mappingName=e.name(e.property(e.property(action,'PlayerMappableKeySettings'),'Name'))
+                break
+            end
+        end
+        if mappingName and mappingName~='' then
+            result=collect(function(entry) return e.name(e.property(entry,'MappingName'))==mappingName end)
+        end
+    end
+    if #result>0 then return result end
     return nil,'standard control unavailable: '..actionId
 end
 

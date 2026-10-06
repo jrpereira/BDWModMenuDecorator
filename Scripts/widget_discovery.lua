@@ -91,21 +91,7 @@ function M.choiceRowFromWrapper(wrapper)
         local leftButton,centerButton,rightButton=contentOf(leftBox),contentOf(centerBox),contentOf(rightBox)
         if className(leftButton)~='Button' or className(centerButton)~='Button' or className(rightButton)~='Button' then return nil end
         local valueWidget=contentOf(centerButton); if className(valueWidget)~='TextBlock' then return nil end
-        local pairHost,pairHostBox
-        for i=0,childCount(content)-1 do
-            local box=childAt(content,i)
-            local host=className(box)=='SizeBox' and contentOf(box) or nil
-            if className(host)=='Overlay' then
-                for n=0,childCount(host)-1 do
-                    local marker=childAt(host,n)
-                    if isA(marker,'TextBlock') and (textOf(marker) or ''):match('^MC_PAIR_HOST_1\n') then
-                        pairHost,pairHostBox=host,box;break
-                    end
-                end
-            end
-            if pairHost then break end
-        end
-        return {kind='picker',wrapper=wrapper,shell=shell,nav=nav,content=content,lane=lane,labelBox=labelBox,labelWidget=labelWidget,label=textOf(labelWidget),leftBox=leftBox,centerBox=centerBox,rightBox=rightBox,leftButton=leftButton,centerButton=centerButton,rightButton=rightButton,valueWidget=valueWidget,pairHost=pairHost,pairHostBox=pairHostBox}
+        return {kind='picker',wrapper=wrapper,shell=shell,nav=nav,content=content,lane=lane,labelBox=labelBox,labelWidget=labelWidget,label=textOf(labelWidget),leftBox=leftBox,centerBox=centerBox,rightBox=rightBox,leftButton=leftButton,centerButton=centerButton,rightButton=rightButton,valueWidget=valueWidget}
     elseif className(content)=='Button' then
         local lane=contentOf(content); if className(lane)~='HorizontalBox' or childCount(lane)~=2 then return nil end
         local labelBox=childAt(lane,0); if className(labelBox)~='SizeBox' then return nil end
@@ -157,29 +143,20 @@ function M.rowsFromScroll(scroll)
                 if valid(marker) and isA(marker,'TextBlock') then
                     local text=textOf(marker) or ''
                     local function decode(value) return (value:gsub('%%(%x%x)',function(hex) return string.char(tonumber(hex,16)) end)) end
-                    if text:sub(1,13)=='MC_SETTING_5\n' then
+                    if text:sub(1,13)=='MC_SETTING_6\n' then
                         local fields={}
                         for value in (text..'\n'):gmatch('(.-)\n') do fields[#fields+1]=value end
-                        local count=tonumber(fields[19])
-                        if count and count>=0 and count<=64 and #fields==19+count*2 then
+                        local count=tonumber(fields[12])
+                        if count and count>=0 and count<=64 and #fields==12+count*2 then
                             local setting={id=decode(fields[4]),kind=fields[5],minimum=tonumber(fields[6]),
                                 maximum=tonumber(fields[7]),step=tonumber(fields[8]),decimals=tonumber(fields[9]),
-                                prefix=decode(fields[10]),suffix=decode(fields[11]),mcKeybind=fields[12]=='1',
-                                mcFixedMode=decode(fields[13]),mcPairId=decode(fields[14]),
-                                mcTabsWidth=tonumber(fields[15]),mcPairTargetId=decode(fields[16]),
-                                mcOptional=fields[17]=='1',mcDefaultControl=decode(fields[18]),
-                                values={},labels={}}
-                            if setting.mcFixedMode=='' then setting.mcFixedMode=nil end
-                            if setting.mcPairId=='' then setting.mcPairId=nil end
-                            if setting.mcPairTargetId=='' then setting.mcPairTargetId=nil end
-                            if setting.mcDefaultControl=='' then setting.mcDefaultControl=nil end
-                            for item=1,count do setting.values[item]=assert(tonumber(decode(fields[19+item])),'invalid setting identity value') end
-                            for item=1,count do setting.labels[item]=decode(fields[19+count+item]) end
+                                prefix=decode(fields[10]),suffix=decode(fields[11]),values={},labels={}}
+                            for item=1,count do setting.values[item]=assert(tonumber(decode(fields[12+item])),'invalid setting identity value') end
+                            for item=1,count do setting.labels[item]=decode(fields[12+count+item]) end
                             row.settingIndex=tonumber(fields[2]);row.identityProviderId=decode(fields[3]);row.settingId=setting.id
                             row.dmmSetting=setting
                         end
                     end
-                    if text:match('^MC_MODE\n') then row.modeState=marker end
                 end
             end
             rows[#rows+1]=row
