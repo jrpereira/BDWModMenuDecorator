@@ -10,7 +10,11 @@
 --   format(setting,value) -> text DMM shows in the row's value caption
 --   build(row,setting,context) -> instance with set(value,committed) and
 --       tick() -> new value or nil; context has tree, api and modules
+-- Optional, for settings that declare conflictScope:
+--   conflictKey(setting,value) -> what two rows in one scope must not share, or nil
+--   instance:conflict(on) -> shows whether the row collides
 local M={version=1}
+local Manifest=require('mcs_manifest')
 local MAX_SETTINGS=256
 local dmmKinds={slider=true,integer=true,percent=true,stepped=true,toggle=true,picker=true,preset=true}
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
@@ -19,19 +23,12 @@ local function split(s)
     return out
 end
 
--- The raw [Setting] and [Category.*] sections, in DMM's own reading order.
+-- The raw [Setting] fields and [Category.*] fields by group, in DMM's own reading order.
 local function sections(content)
-    local raw,categories,current={},{},nil
-    for line in (content..'\n'):gmatch('([^\n]*)\n') do
-        local name=trim(line):match('^%[([^%]]+)%]$')
-        if name then
-            current=nil
-            if name=='Setting' or name:match('^Setting%.') then current={};raw[#raw+1]=current
-            elseif name:match('^Category%.') then current={};categories[name:sub(10)]=current end
-        elseif current and not trim(line):match('^[;#]') and trim(line)~='' then
-            local k,v=line:match('^%s*([^=]+)=(.*)$')
-            if k and current[trim(k)]==nil then current[trim(k)]=trim(v) end
-        end
+    local raw,categories={},{}
+    for _,section in ipairs((Manifest.sections(content))) do
+        if section.setting then raw[#raw+1]=section.fields
+        elseif section.name:match('^Category%.') then categories[section.name:sub(10)]=section.fields end
     end
     return raw,categories
 end
@@ -79,12 +76,15 @@ function M.new(report)
         local drop={}
         for group in pairs(categories) do if not used[group] then drop[group]=true end end
         if next(drop)==nil then return content end
-        local out,skipping={},false
-        for line in (content..'\n'):gmatch('([^\n]*)\n') do
-            local name=trim(line):match('^%[([^%]]+)%]$')
-            if name then skipping=name:match('^Category%.') and drop[name:sub(10)] or false end
-            if not skipping then out[#out+1]=line end
+        local list,lines=Manifest.sections(content)
+        local skipped={}
+        for _,section in ipairs(list) do
+            if section.name:match('^Category%.') and drop[section.name:sub(10)] then
+                for n=section.first,section.last do skipped[n]=true end
+            end
         end
+        local out={}
+        for n,line in ipairs(lines) do if not skipped[n] then out[#out+1]=line end end
         return table.concat(out,'\n')
     end
 
@@ -146,6 +146,74 @@ function M.new(report)
         return merged
     end
 
+    -- Colliding rows, and the navigation pickers that separate a colliding pair.
+    -- Rows collide when they share a conflict scope and a conflict key. A picker
+    -- separates two rows when both depend on it, directly or through the pickers
+    -- gating them, but on different choices of it.
+    function registry.conflicts(model)
+        local rows,pickers={},{}
+        if not model or model.error then return rows,pickers end
+        local items=model.items or {}
+        local groups={}
+        for i,setting in ipairs(items) do
+            local editor=editorOf(setting)
+            if editor and editor.conflictKey and setting.conflictScope then
+                local ok,key=pcall(editor.conflictKey,setting,model.pending[i])
+                if ok and key~=nil then
+                    local id=setting.conflictScope..'\0'..tostring(key)
+                    groups[id]=groups[id] or {}
+                    table.insert(groups[id],i)
+                end
+            end
+        end
+        local gating={}
+        local function gates(index)
+            if gating[index] then return gating[index] end
+            local out,seen={},{}
+            local function walk(n)
+                if seen[n] or not items[n] then return end
+                seen[n]=true
+                for _,rule in ipairs(items[n].visibility or {}) do
+                    local known=out[rule.target]
+                    if known then
+                        local both={}
+                        for value in pairs(known) do if rule.values[value] then both[value]=true end end
+                        out[rule.target]=both
+                    else
+                        local copy={}
+                        for value in pairs(rule.values) do copy[value]=true end
+                        out[rule.target]=copy
+                    end
+                    walk(rule.target)
+                end
+            end
+            walk(index)
+            gating[index]=out
+            return out
+        end
+        local function same(a,b)
+            for value in pairs(a) do if not b[value] then return false end end
+            for value in pairs(b) do if not a[value] then return false end end
+            return true
+        end
+        for _,list in pairs(groups) do
+            if #list>1 then
+                for _,index in ipairs(list) do rows[index]=true end
+                for a=1,#list-1 do
+                    for b=a+1,#list do
+                        local first,second=gates(list[a]),gates(list[b])
+                        for picker,values in pairs(first) do
+                            if second[picker] and items[picker].mcNavigation and not same(values,second[picker]) then
+                                pickers[picker]=true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return rows,pickers
+    end
+
     -- Wraps DMM's modules. Every editor call is guarded: a failing editor reports
     -- and leaves DMM's own behavior in place.
     function registry:install(modules)
@@ -159,6 +227,14 @@ function M.new(report)
             if not editor then return index(setting,value) end
             local ok,valid=pcall(editor.valid,setting,value)
             return ok and valid and 1 or nil
+        end
+        -- Canonical form of a stored value of this module's types; nil for DMM's own
+        -- types and for values the editor rejects.
+        choices.mcNormalize=function(setting,value)
+            local editor=editorOf(setting)
+            if not editor then return nil end
+            local ok,normalized=pcall(editor.normalize,setting,value)
+            return ok and normalized or nil
         end
         choices.format=function(setting,value)
             local editor=editorOf(setting)
@@ -233,12 +309,16 @@ function M.new(report)
                 self:refresh()
                 return table.unpack(results,1,results.n)
             end
-            -- The setter: every refresh puts the model's value into the editor.
+            -- The setter: every refresh puts the model's value into the editor, and
+            -- marks collisions; presentation colors the pickers in mcConflictPickers.
             function ui:refresh(...)
                 local results=table.pack(refresh(self,...))
                 local model=self.model
+                local colliding,pickers=registry.conflicts(model)
+                if model then model.mcConflictPickers=pickers end
                 each(function(i,instance)
                     if not model.error then instance:set(model.pending[i],model.committed[i]) end
+                    if instance.conflict then instance:conflict(colliding[i]==true) end
                 end)
                 return table.unpack(results,1,results.n)
             end

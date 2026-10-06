@@ -58,6 +58,19 @@ local published={}
 local settingsApi={publish=function(id,event) published[#published+1]=event;return true end}
 registry:install({choices=choices,controls=controls,settingsApi=settingsApi})
 local setting={id='L',kind='extension',editor='letter',label='Letter'}
+local keybind={id='K',kind='extension',editor='keybind',triggers={'Tap','Hold'},defaultTrigger='Tap'}
+registry:register('keybind',Keybind)
+assert(choices.mcNormalize(setting,'b')=='b' and choices.mcNormalize(keybind,' One | hold ')=='1|Hold'
+    and choices.mcNormalize(keybind,'Escape')==nil and choices.mcNormalize(keybind,42)==nil
+    and choices.mcNormalize({kind='picker',values={0}},0)==nil,
+    'stored values of this module\'s types normalize through their editor; DMM types and invalid values do not')
+-- DMM gets the manifest without categories only this module's settings use.
+local mixed=table.concat({'[Setting.A]','Id=A','Type=picker','Group=Shared','[Setting.K]','Id=K','Type=keybind',
+    'Group=Keys','[Category.Keys]','VisibleWhen=A','VisibleValues=1','[Category.Shared]','mcHelp=Shared rows'},'\n')
+assert(registry:forDMM(mixed)==table.concat({'[Setting.A]','Id=A','Type=picker','Group=Shared','[Setting.K]','Id=K',
+    'Type=keybind','Group=Keys','[Category.Shared]','mcHelp=Shared rows'},'\n'),'a keybind-only category is left out for DMM')
+local plain='[Setting.A]\nId=A\nType=picker\n[Category.Unused]\nmcHelp=x\n'
+assert(registry:forDMM(plain)==plain,'a manifest without this module\'s types is passed unchanged')
 local ui=controls.build({},{{id='P',testOnly=true,choices={setting}}},{})
 ui:show(1)
 assert(built[1]=='L' and #built==1 and set[#set]=='a/a','show builds the editor once and sets its value')
@@ -87,3 +100,75 @@ assert(published[1].values.Mode==2 and published[1].values.Jump==nil and publish
 assert(settingsApi.publish('P',{values={Jump='F|Tap'},changes={}})==true and #published==1,
     'a notification with only text values is skipped')
 print('PASS applied notifications drop text values')
+
+-- Collisions: keybind rows sharing a conflict scope must not share a key and trigger;
+-- the navigation picker separating a colliding pair is reported too.
+do
+    local function key(id,rules)
+        local s=Keybind.declare({Triggers='Tap|Hold',mcConflictScope='controls'})
+        s.id,s.kind,s.editor,s.visibility=id,'extension','keybind',rules or {}
+        return s
+    end
+    local function picker(id,rules) return {id=id,kind='picker',values={0,1},mcNavigation=true,visibility=rules or {}} end
+    local function on(target,value) return {target=target,values={[value]=true}} end
+    -- 1 Section picker; 2 and 3 map pickers of sections 0 and 1; keys 4,5 on maps of section 0, 6 in section 1.
+    local items={picker('Section'),picker('MapA',{on(1,0)}),picker('MapB',{on(1,1)}),
+        key('A1',{on(2,0)}),key('A2',{on(2,1)}),key('B1',{on(3,0)}),key('Same',{on(2,0)})}
+    local function check(values,rows,pickers,why)
+        local model={items=items,pending=values}
+        local gotRows,gotPickers=registry.conflicts(model)
+        for i=1,#items do
+            assert((gotRows[i]==true)==(rows[i]==true),why..': row '..i)
+            assert((gotPickers[i]==true)==(pickers[i]==true),why..': picker '..i)
+        end
+    end
+    local none='none'
+    check({0,0,0,'J|Tap',none,none,'j|tap'},{[4]=true,[7]=true},{},'same map collides without a picker')
+    check({0,0,0,'J|Tap','J|Tap',none,none},{[4]=true,[5]=true},{[2]=true},'different maps light the map picker')
+    check({0,0,0,'J|Tap',none,'J|Tap',none},{[4]=true,[6]=true},{[1]=true},'different sections light only the Section picker')
+    check({0,0,0,'J|Tap','J|Hold',none,none},{},{},'Tap and Hold do not collide')
+    check({0,0,0,none,none,none,none},{},{},'unbound rows never collide')
+    items[5].conflictScope='other'
+    check({0,0,0,'J|Tap','J|Tap',none,none},{},{},'rows in different scopes do not collide')
+    items[5].conflictScope='controls'
+    assert(next((registry.conflicts({items=items,pending={},error='broken'})))==nil,'a page error shows no collisions')
+end
+print('PASS colliding keybinds and the picker that separates them are found')
+
+-- Every refresh marks colliding editors and hands the separating pickers to presentation.
+do
+    local wired=FieldTypes.new(function() end)
+    local marks={}
+    wired:register('clash',{declare=function() return {} end,normalize=function(_,raw) return raw or 'x' end,
+        valid=function() return true end,format=function() return '' end,
+        conflictKey=function(_,value) return value~='none' and value or nil end,
+        build=function(_,s)
+            local instance={}
+            function instance:set() end
+            function instance:tick() end
+            function instance:conflict(on) marks[s.id]=on end
+            return instance
+        end})
+    local items={{id='Map',kind='picker',values={0,1},mcNavigation=true,visibility={}},
+        {id='C1',kind='extension',editor='clash',conflictScope='s',visibility={{target=1,values={[0]=true}}}},
+        {id='C2',kind='extension',editor='clash',conflictScope='s',visibility={{target=1,values={[1]=true}}}}}
+    local wiredChoices={parse=function() return {} end,index=function() return 1 end,format=function() return '' end,
+        open=function(provider) return {items=provider.choices,pending={0,'J','J'},committed={0,'J','J'}} end}
+    local wiredControls={build=function(_,providers)
+        local ui={panels={{rows={{},{},{}}}}}
+        function ui:prepare(index) self.panels[index].built=true end
+        function ui:show(index) self.panels[index].built=true;self.active=index;self.model=wiredChoices.open(providers[index]) end
+        function ui:refresh() end
+        function ui:tick() end
+        return ui
+    end}
+    wired:install({choices=wiredChoices,controls=wiredControls})
+    local page=wiredControls.build({},{{id='W',testOnly=true,choices=items}},{})
+    page:show(1)
+    assert(marks.C1==true and marks.C2==true and page.model.mcConflictPickers[1]==true,
+        'refresh marks both rows and the map picker')
+    page.model.pending[3]='K';page:refresh()
+    assert(marks.C1==false and marks.C2==false and next(page.model.mcConflictPickers)==nil,
+        'resolving the collision clears both rows and the picker')
+end
+print('PASS refresh marks colliding editors and separating pickers')

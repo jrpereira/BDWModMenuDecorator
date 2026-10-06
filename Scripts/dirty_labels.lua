@@ -53,10 +53,16 @@ local function readSignal(shell)
         end
     end
 end
-local function starOf(shell)
-    for i=0,Discovery.childCount(shell)-1 do
-        local child=Discovery.childAt(shell,i)
-        if Discovery.isTextBlock(child) and Discovery.textOf(child)=='*' then return child end
+-- ModCoreSettings' presentation places the star right after the label text, in
+-- the box both share. A row without one shows only the italic label.
+local function starOf(label)
+    local line=Discovery.parentOf(label)
+    if Discovery.className(line)~='HorizontalBox' then return nil end
+    local labelAddress=Discovery.address(label)
+    for i=0,Discovery.childCount(line)-1 do
+        local child=Discovery.childAt(line,i)
+        if Discovery.isTextBlock(child) and Discovery.address(child)~=labelAddress
+            and Discovery.textOf(child)=='*' then return child end
     end
 end
 local function serialized(state)
@@ -104,8 +110,8 @@ function M.new(log)
         local presentation=dirty and '1' or '0'
         if state.rendered==presentation then return end
         setText(label,state.base)
-        local star=assert(starOf(shell),'dirty star unavailable')
-        star:SetVisibility(dirty and 4 or 2) -- Hit-test invisible / hidden; label layout never changes.
+        local star=starOf(label)
+        if star then star:SetVisibility(dirty and 4 or 2) end -- Hit-test invisible / hidden; label layout never changes.
         local face=dirty and state.italic~='' and state.italic or state.face
         local skew=dirty and state.italicSkew or state.skew
         local font=label.Font
@@ -182,20 +188,6 @@ function M.new(log)
                             end
                             state.pending='';setText(marker,serialized(state))
                         end
-                        if not starOf(shell) then
-                            local star=StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'),shell:GetOuter())
-                            assert(Discovery.valid(star),'dirty star construction failed')
-                            local ok,err=pcall(function()
-                                star:SetVisibility(2)
-                                star:SetFont(row.labelWidget.Font)
-                                setText(star,'*')
-                                local slot=assert(shell:AddChildToOverlay(star),'dirty star attachment failed')
-                                slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(2)
-                                -- Stock DMM labels start at 20px. Use their existing left gutter.
-                                slot:SetPadding({Left=4,Top=0,Right=0,Bottom=0})
-                            end)
-                            if not ok then pcall(star.RemoveFromParent,star);error(err) end
-                        end
                         self.records[valueId]=record
                         setText(row.valueWidget,clean)
                         render(row.labelWidget,state,displayed(state),shell)
@@ -227,7 +219,7 @@ function M.new(log)
                         local dirty,clean
                         if signal then dirty,clean=signal.dirty,signal.clean
                         else dirty,clean=M.signal(raw,record.setting) end
-                        -- KEM writes the clean value back. Seeing that same clean
+                        -- This writes the clean value back. Seeing that same clean
                         -- value on the next tick is not a new DMM notification.
                         if (signal and signal.raw~=state.signal) or (not signal and raw~=state.lastValue) then
                             state.dirty=dirty

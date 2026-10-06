@@ -121,3 +121,42 @@ assert(identity.kind=='picker' and identity.values[1]==0 and identity.values[2]=
  and identity.labels[1]=='Off' and identity.labels[2]=='On\n','values and escaped labels survive the identity')
 M.rowFromWrapper=originalRow
 print('PASS category reordering preserves schema row identity')
+
+-- Presentation puts each label in a box with the dirty star after it; rows are still found.
+local function boxed(name,class,child)
+ local o=widget(name,class,{child})
+ function o:GetContent() return child end
+ return o
+end
+local function labelLine(prefix)
+ local label=widget(prefix..'Label','TextBlock')
+ return widget(prefix..'Line','HorizontalBox',{label,widget(prefix..'Star','TextBlock')}),label
+end
+local pickerLine,pickerLabel=labelLine('Picker')
+local value=widget('PickerValue','TextBlock')
+local lane=widget('PickerLane','HorizontalBox',{
+ boxed('PickerLabelBox','SizeBox',boxed('PickerLabelButton','Button',pickerLine)),
+ boxed('PickerLeftBox','SizeBox',widget('PickerLeft','Button',{})),
+ boxed('PickerCenterBox','SizeBox',boxed('PickerCenter','Button',value)),
+ boxed('PickerRightBox','SizeBox',widget('PickerRight','Button',{}))})
+local pickerShell=widget('PickerShell','Overlay',{widget('PickerNav','Slider'),widget('PickerContent','Overlay',{lane})})
+local pickerRow=assert(M.choiceRowFromWrapper(boxed('PickerWrapper','SizeBox',pickerShell)))
+assert(pickerRow.kind=='picker' and pickerRow.labelWidget==pickerLabel and pickerRow.valueWidget==value,
+ 'a picker label beside its star is the row label')
+local toggleLine,toggleLabel=labelLine('Toggle')
+local toggleLane=widget('ToggleLane','HorizontalBox',{boxed('ToggleLabelBox','SizeBox',toggleLine),
+ boxed('ToggleValueBox','SizeBox',widget('ToggleValue','TextBlock'))})
+local toggleShell=widget('ToggleShell','Overlay',{widget('ToggleNav','Slider'),boxed('ToggleButton','Button',toggleLane)})
+local toggleRow=assert(M.choiceRowFromWrapper(boxed('ToggleWrapper','SizeBox',toggleShell)))
+assert(toggleRow.kind=='toggle' and toggleRow.labelWidget==toggleLabel,'a toggle label beside its star is the row label')
+assert(M.parentOf(toggleLabel)==toggleLine)
+-- A keybind row: DMM's value caption sits first in the editor's overlay, beside its controls.
+local editorLine,editorLabel=labelLine('Editor')
+local caption=widget('EditorCaption','TextBlock')
+local host=widget('EditorHost','Overlay',{caption,widget('EditorControls','HorizontalBox',{})})
+local editorLane=widget('EditorLane','HorizontalBox',{boxed('EditorLabelBox','SizeBox',editorLine),
+ boxed('EditorValueBox','SizeBox',host)})
+local editorShell=widget('EditorShell','Overlay',{widget('EditorNav','Slider'),boxed('EditorButton','Button',editorLane)})
+local editorRow=assert(M.choiceRowFromWrapper(boxed('EditorWrapper','SizeBox',editorShell)),'a keybind row is found')
+assert(editorRow.labelWidget==editorLabel and editorRow.valueWidget==caption,'its value is DMM\'s caption in the editor overlay')
+print('PASS rows are found when the label shares a box with its dirty star')

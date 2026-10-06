@@ -131,6 +131,15 @@ do
     lateEditor:set('J|Tap','none');lateEditor:set('none','none')
     assert(find(lateLine.children[3],function(w) return w.text=='Q' and w.visibility==3 end),
         'the default appears once the key profile is available')
+    -- The page need not be edited: an open row retries from its tick.
+    available=false
+    local idleRow=toggleRow()
+    local idleEditor=Keybind.build(idleRow,setting,{api=api,tree={},modules={standardControls=late}})
+    idleEditor:set('none','none')
+    local idleLine=find(idleRow.widget:GetContent():GetChildAt(1),function(w) return w.kind=='HorizontalBox' end)
+    available=true
+    assert(idleEditor:tick()==nil and find(idleLine.children[3],function(w) return w.text=='Q' and w.visibility==3 end),
+        'an idle row shows the default once the key profile loads')
 end
 print('PASS a failed default lookup is retried')
 
@@ -159,8 +168,12 @@ local function collectButtons(w) if w.kind=='Button' then buttons[#buttons+1]=w 
 collectButtons(valueBox)
 local trigger,key,clear=buttons[1],buttons[2],buttons[3]
 assert(key.visibility==1,'the key box hit target gives way to the native capture widget')
-trigger.pressed=true;assert(editor:tick()==nil)
+-- A press dragged off the control and released there does nothing.
+trigger.hovered=true;trigger.pressed=true;assert(editor:tick()==nil)
+trigger.hovered=false;trigger.pressed=false;assert(editor:tick()==nil,'releasing off Mode cancels the click')
+trigger.hovered=true;trigger.pressed=true;assert(editor:tick()==nil)
 trigger.pressed=false;assert(editor:tick()=='LeftAlt|Tap')
+trigger.hovered=false;editor:tick()
 trigger.hovered=true;editor:tick();trigger.hovered=false;editor:tick()
 assert(math.abs(inner(line.children[1]).brush.A-0.108)<1e-9,'hover ends on the dimmed Mode background')
 editor:set('LeftAlt|Tap','none')
@@ -168,8 +181,11 @@ clear.hovered=true;editor:tick()
 assert(clearText.opacity==1 and inner(line.children[5]).brush.R>0.9,'X lights up under the pointer')
 clear.hovered=false;editor:tick()
 assert(clearText.opacity==0.7 and math.abs(inner(line.children[5]).brush.A-0.09)<1e-9,'and dims again after')
-clear.pressed=true;editor:tick();clear.pressed=false
+clear.hovered=true;clear.pressed=true;editor:tick();clear.hovered=false;clear.pressed=false
+assert(editor:tick()==nil,'releasing off X keeps the key')
+clear.hovered=true;clear.pressed=true;editor:tick();clear.pressed=false
 assert(editor:tick()=='none')
+clear.hovered=false
 print('PASS the trigger control cycles triggers and X clears the key')
 
 -- Without a default control the placeholder is dim gray; without Optional it says Unbound.
@@ -188,3 +204,26 @@ editor:set('none','none')
 texts={};collect(row.widget:GetContent():GetChildAt(1))
 assert(shown('Unbound'))
 print('PASS placeholders follow Optional and DefaultControl')
+
+-- Conflict scope: rows sharing it must not bind the same key and trigger.
+local scoped=Keybind.declare({Triggers='Tap|Hold',mcConflictScope='controls'})
+assert(scoped.conflictScope=='controls' and Keybind.declare({}).conflictScope==nil)
+assert(not pcall(Keybind.declare,{mcConflictScope='two words'}),'an invalid scope name fails the manifest')
+assert(not pcall(Keybind.declare,{mcConflictScope=string.rep('a',65)}),'a scope name is at most 64 characters')
+assert(Keybind.conflictKey(scoped,'J|Tap')==Keybind.conflictKey(scoped,'j|tap'),'keys and triggers ignore case')
+assert(Keybind.conflictKey(scoped,'One|Tap')==Keybind.conflictKey(scoped,'1|Tap'),'digits compare as stored')
+assert(Keybind.conflictKey(scoped,'J|Tap')~=Keybind.conflictKey(scoped,'J|Hold'),'Tap and Hold on one key do not collide')
+assert(Keybind.conflictKey(scoped,'none')==nil and Keybind.conflictKey(scoped,'Escape')==nil,'unbound rows never collide')
+row=toggleRow();editor=Keybind.build(row,scoped,{api=api,tree={},modules={}})
+local scopedLine=find(row.widget:GetContent():GetChildAt(1),function(w) return w.kind=='HorizontalBox' end)
+editor:set('J|Tap','J|Tap')
+local normal=inner(scopedLine.children[3]).brush
+editor:conflict(true)
+local red=inner(scopedLine.children[3]).brush
+assert(red.R>red.G*4 and red.A<1,'a colliding key has a dim red background')
+editor:conflict(false)
+assert(inner(scopedLine.children[3]).brush.R==normal.R and inner(scopedLine.children[3]).brush.A==normal.A,
+    'clearing the collision restores the key background')
+editor:conflict(true);editor:set('none','J|Tap')
+assert(inner(scopedLine.children[3]).brush.R<0.2,'an unbound row is never red')
+print('PASS colliding keys show a dim red background')

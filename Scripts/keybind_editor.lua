@@ -4,7 +4,8 @@
 -- while unbound, the key box shows the default control's keys.
 --
 -- Manifest fields: Triggers=Tap|Hold (the first is the default trigger),
--- Default=none|<FKey>|<FKey>|<trigger>, Optional=1, DefaultControl=IA_*.
+-- Default=none|<FKey>|<FKey>|<trigger>, Optional=1, DefaultControl=IA_*,
+-- mcConflictScope=<name> (rows on a page sharing it must not bind the same key and trigger).
 local M={}
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function split(s)
@@ -49,9 +50,11 @@ function M.declare(fields)
     assert(optional=='' or optional=='0' or optional=='1','Optional must be 0 or 1')
     local control=trim(fields.DefaultControl)
     assert(control=='' or control:match('^[%w_]+$'),'invalid DefaultControl')
+    local scope=trim(fields.mcConflictScope)
+    assert(scope=='' or (#scope<=64 and scope:match('^[%w_]+$')),'invalid mcConflictScope')
     -- The first declared trigger is the default.
     return {triggers=triggers,defaultTrigger=triggers[1],optional=optional=='1',
-        defaultControl=control~='' and control or nil}
+        defaultControl=control~='' and control or nil,conflictScope=scope~='' and scope or nil}
 end
 
 -- Canonical text for a stored or declared value; nil when it is not valid.
@@ -73,12 +76,22 @@ function M.parts(value)
 end
 -- The row's own value caption only carries DMM's dirty star.
 function M.format() return '' end
+-- What two rows in one conflict scope must not share: the key, ignoring case, and
+-- the trigger. Unbound rows never collide.
+function M.conflictKey(setting,value)
+    local normalized=M.normalize(setting,value)
+    local key,trigger=M.parts(normalized or 'none')
+    if not key then return nil end
+    return key:lower()..'|'..trigger:lower()
+end
 
 local placeholder={inherited={R=0.9,G=0.82,B=0.3,A=0.7},optional={R=0.6,G=0.6,B=0.6,A=0.7},
     key={R=1,G=1,B=1,A=1},none={R=1,G=1,B=1,A=0.45},
     -- A bound key uses the active tab yellow; an inherited one is dimmed.
     active={R=0.95,G=0.63,B=0.08,A=1},defaultCaption={R=0.6,G=0.6,B=0.6,A=0.7},
-    defaultKey={R=1,G=1,B=1,A=0.75}}
+    defaultKey={R=1,G=1,B=1,A=0.75},
+    -- A key that collides with another row in its conflict scope.
+    conflict={R=0.55,G=0.08,B=0.06,A=0.6}}
 
 -- Column widths of the editor row: label | Mode, gap, key, gap, X. Other rows
 -- align with the key column through keyOffset, measured from the label's start.
@@ -206,7 +219,8 @@ function M.build(row,setting,context)
         if ok then return name,modified end
     end
     -- Only a resolved default is kept: the key profile may not exist yet when the
-    -- row is first shown, so a failed lookup is tried again on the next render.
+    -- row is first shown, so a failed lookup is tried again on each render and,
+    -- while it stays unresolved, from tick.
     local function defaultKeys()
         if instance.defaults==nil then
             local controls=context.modules.standardControls
@@ -237,7 +251,8 @@ function M.build(row,setting,context)
         key.text:SetVisibility(defaults and 1 or 3)
         showInherited(defaults and true or false)
         if defaults then api.setText(inheritedKey,defaults) end
-        key.inner:SetBrushColor(shade((bound or instance.selecting) and 1 or defaults and 0.5 or 0.30))
+        key.inner:SetBrushColor(instance.conflicted and bound and not instance.selecting and placeholder.conflict
+            or shade((bound or instance.selecting) and 1 or defaults and 0.5 or 0.30))
         clear.box:SetVisibility(setting.optional and bound and 0 or 2)
         clear.button:SetIsEnabled(bound~=nil)
         local fixed=#setting.triggers==1
@@ -247,9 +262,10 @@ function M.build(row,setting,context)
         trigger.text:SetRenderOpacity(fixed and 0.45 or 1)
         trigger.button:SetIsEnabled(bound~=nil and not fixed)
     end
+    -- A press fires on release over the button; dragging off and releasing cancels it.
     local function clicked(button,state)
         local pressed=button:GetIsEnabled() and button:IsPressed()==true
-        local fired=instance[state] and not pressed
+        local fired=instance[state] and not pressed and button:IsHovered()==true
         instance[state]=pressed
         return fired
     end
@@ -260,6 +276,13 @@ function M.build(row,setting,context)
         self.value=value
         pcall(function() selector:SetSelectedKey(chord('None')) end)
         render()
+    end
+    -- Marks the key as colliding with another row in its conflict scope.
+    function instance:conflict(on)
+        on=on==true
+        if on==self.conflicted then return end
+        self.conflicted=on
+        if self.value~=nil then render() end
     end
     -- Getter: a finished edit as the new value, or nil.
     function instance:tick()
@@ -278,6 +301,15 @@ function M.build(row,setting,context)
             name=keyName(name)
             if name and not modified then return name..'|'..(mode or setting.defaultTrigger) end
             return nil
+        end
+        -- A key profile that loads after the row was drawn still shows the default
+        -- keys: retry once a second, for at most 30 seconds of an open page.
+        if not bound and setting.defaultControl and self.defaults==nil and (self.defaultTries or 0)<30 then
+            local now=os.time()
+            if now~=self.defaultTried then
+                self.defaultTried=now;self.defaultTries=(self.defaultTries or 0)+1
+                if defaultKeys() then render() end
+            end
         end
         local hovered=trigger.button:IsHovered()==true
         if hovered~=self.hovered then

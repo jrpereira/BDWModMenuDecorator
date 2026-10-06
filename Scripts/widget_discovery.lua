@@ -49,6 +49,13 @@ function M.cleanLabel(text)
 end
 local function address(o) local ok,v=pcall(function() return o:GetAddress() end); return ok and tostring(v) or nil end
 M.address=address
+local function parentOf(widget) local ok,v=pcall(function() return widget:GetParent() end); return ok and v or nil end
+M.parentOf=parentOf
+-- A row label may share a box with the dirty star that follows it.
+local function labelOf(widget)
+    if className(widget)=='HorizontalBox' then widget=childAt(widget,0) end
+    if className(widget)=='TextBlock' then return widget end
+end
 
 function M.ancestorOfClass(o,wanted,maxDepth)
     local cur=o
@@ -67,7 +74,7 @@ function M.numericRowFromSlider(slider)
     local middle=childAt(line,1); if address(middle)~=address(surfaceBox) then return nil end
     local labelBox,valueBox=childAt(line,0),childAt(line,2); if className(labelBox)~='SizeBox' or className(valueBox)~='SizeBox' then return nil end
     local button=contentOf(labelBox); if className(button)~='Button' then return nil end
-    local labelWidget=contentOf(button); if className(labelWidget)~='TextBlock' then return nil end
+    local labelWidget=labelOf(contentOf(button)); if not labelWidget then return nil end
     local valueWidget=contentOf(valueBox); if className(valueWidget)~='TextBlock' then return nil end
     local overlay=line:GetParent(); if className(overlay)~='Overlay' then return nil end
     local wrapper=overlay:GetParent(); if className(wrapper)~='SizeBox' then return nil end
@@ -87,7 +94,7 @@ function M.choiceRowFromWrapper(wrapper)
         local labelBox,leftBox,centerBox,rightBox=childAt(lane,0),childAt(lane,1),childAt(lane,2),childAt(lane,3)
         if className(labelBox)~='SizeBox' or className(leftBox)~='SizeBox' or className(centerBox)~='SizeBox' or className(rightBox)~='SizeBox' then return nil end
         local button=contentOf(labelBox); if className(button)~='Button' then return nil end
-        local labelWidget=contentOf(button); if className(labelWidget)~='TextBlock' then return nil end
+        local labelWidget=labelOf(contentOf(button)); if not labelWidget then return nil end
         local leftButton,centerButton,rightButton=contentOf(leftBox),contentOf(centerBox),contentOf(rightBox)
         if className(leftButton)~='Button' or className(centerButton)~='Button' or className(rightButton)~='Button' then return nil end
         local valueWidget=contentOf(centerButton); if className(valueWidget)~='TextBlock' then return nil end
@@ -95,9 +102,13 @@ function M.choiceRowFromWrapper(wrapper)
     elseif className(content)=='Button' then
         local lane=contentOf(content); if className(lane)~='HorizontalBox' or childCount(lane)~=2 then return nil end
         local labelBox=childAt(lane,0); if className(labelBox)~='SizeBox' then return nil end
-        local labelWidget=contentOf(labelBox); if className(labelWidget)~='TextBlock' then return nil end
+        local labelWidget=labelOf(contentOf(labelBox)); if not labelWidget then return nil end
         local valueBox=childAt(lane,1); if className(valueBox)~='SizeBox' then return nil end
-        local valueWidget=contentOf(valueBox); if className(valueWidget)~='TextBlock' then return nil end
+        local valueWidget=contentOf(valueBox)
+        -- A field-type editor (keybind) keeps DMM's value caption, first, in an overlay
+        -- with its own controls; the caption still carries DMM's dirty star.
+        if className(valueWidget)=='Overlay' then valueWidget=childAt(valueWidget,0) end
+        if className(valueWidget)~='TextBlock' then return nil end
         return {kind='toggle',wrapper=wrapper,shell=shell,nav=nav,button=content,lane=lane,labelWidget=labelWidget,label=textOf(labelWidget),valueWidget=valueWidget}
     end
 end
