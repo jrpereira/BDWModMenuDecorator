@@ -700,3 +700,41 @@ assert(padRow.mcWrapped:GetParent().WidthOverride==584-230-24 and padRow.widget:
     'the value column is wider than DMM\'s picker value')
 assert(padRow.wrapper.HeightOverride==66,'the row grows to fit three lines')
 print('PASS wrapped read-only values break at commas in a wider column')
+
+-- mcChoiceNotes: a picker choice's note shows on a small muted second line under
+-- DMM's value, which moves up while the current choice has a note.
+for i=#items,1,-1 do items[i]=nil end
+items[1]={id='Template',kind='picker',group='Visuals',label='Quickslots',values={0,7,9},
+    labels={'None','Wheels','Underbar'}}
+local notes='[Setting.Template]\nId=Template\nmcChoiceNotes=7:Fangdango;9: Fangdango \n'
+for _,bad in ipairs({'7:Fangdango;7:Other','8:Fangdango','7:','7:'..('x'):rep(65),'Fangdango'}) do
+    assert(not pcall(M.parse,'[Setting.Template]\nId=Template\nmcChoiceNotes='..bad..'\n',items),bad)
+end
+local toggleItems={{id='Flag',kind='toggle',group='G',label='Flag',values={0,1},labels={'Off','On'}}}
+assert(not pcall(M.parse,'[Setting.Flag]\nId=Flag\nmcChoiceNotes=1:On\n',toggleItems),'pickers only')
+M.parse(notes,items)
+assert(items[1].mcChoiceNotes[7]=='Fangdango' and items[1].mcChoiceNotes[9]=='Fangdango'
+    and items[1].mcChoiceNotes[0]==nil,'notes are trimmed; None has none')
+local noteUi=controls.build(widget(),{{choices=items}},api)
+noteUi:show(1)
+local noteRow=noteUi.panels[1].rows[1]
+local noteBox=noteRow.mcNoteBox
+-- The note overlays the row, aligned with DMM's 190-pixel value button.
+assert(noteBox:GetParent()==noteRow.background:GetParent() and noteBox.WidthOverride==190
+    and noteBox.Slot.HorizontalAlignment==3 and noteBox.Slot.Padding.Right==32
+    and noteBox.Slot.VerticalAlignment==3,'the note sits under the value, left of the right arrow')
+assert(noteRow.mcNote.Font.Size==10 and noteRow.mcNote.color=='muted','the note is small and muted')
+assert(#noteRow.parts==3 and noteRow.value.parent~=noteBox,'DMM\'s value keeps its place')
+-- None has no note: one line, as today.
+assert(noteBox.visible==1 and noteRow.value.Slot.Padding.Bottom==0)
+noteUi.model.pending[1]=7;noteUi:refresh()
+assert(noteBox.visible==3 and noteRow.mcNote.text=='Fangdango' and noteRow.value.Slot.Padding.Bottom==12,
+    'a noted choice shows its note without taking clicks, and the value moves up')
+noteUi.model.pending[1]=0;noteUi:refresh()
+assert(noteBox.visible==1 and noteRow.value.Slot.Padding.Bottom==0,'back to one line')
+-- A tab picker shows every choice itself and gets no note line.
+M.parse(notes..'mcType=tab\n',items)
+local tabUi=controls.build(widget(),{{choices=items}},api)
+tabUi:show(1)
+assert(tabUi.panels[1].rows[1].mcNote==nil,'tab pickers are not covered')
+print('PASS picker choice notes show on a second line under the value')

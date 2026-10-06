@@ -67,6 +67,22 @@ function M.parse(content,items)
         end
         return result
     end
+    -- mcChoiceNotes=<value>:<text>;... gives a picker's choices a second line.
+    local function choiceNotes(r,s)
+        if r.mcChoiceNotes==nil then return nil end
+        assert(s.kind=='picker','mcChoiceNotes requires a picker')
+        local notes={}
+        for entry in (r.mcChoiceNotes..';'):gmatch('(.-);') do
+            local value,note=entry:match('^%s*([^:]+):(.+)$')
+            value,note=tonumber(value),trim(note)
+            assert(value and note~='' and #note<=64 and notes[value]==nil,'invalid mcChoiceNotes')
+            local valid=false
+            for _,v in ipairs(s.values) do if v==value then valid=true end end
+            assert(valid,'mcChoiceNotes value outside picker choices')
+            notes[value]=note
+        end
+        return notes
+    end
     for _,section in ipairs(sections) do
         local r=section.fields
         local group=section.name:match('^Category%.(.+)$')
@@ -106,6 +122,7 @@ function M.parse(content,items)
                 assert(not s.mcWrap or s.kind=='picker' and r.mcReadOnly=='1','mcWrap requires a read-only picker')
                 s.mcReferenceLabel=r.mcReferenceLabel
                 s.mcLabelRule=labelRule(r)
+                s.mcChoiceNotes=choiceNotes(r,s)
                 s.mcTabs,s.mcCycle,s.mcTabsWidth,s.mcHeader=nil,nil,nil,nil
                 local hasLevel=r.mcLevel~=nil
                 local decoration=r.mcType
@@ -502,6 +519,22 @@ function M.install(choices,controls,pages,options)
                     row.wrapper:SetHeightOverride(math.max(40,lines*18+12))
                     for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
                     row.mcWrapped=value
+                elseif setting.mcChoiceNotes and row.value and not row.mcHeaderTabs then
+                    -- A choice's note sits under DMM's value, small and muted like the
+                    -- keybind editor's "default", inside the 40-pixel row. It overlays
+                    -- the row so DMM's value button keeps its structure, aligned with
+                    -- that button: left of the 32-pixel right arrow, at its 190-pixel width.
+                    local note=api.caption(tree,'')
+                    api.Theme.font(note,api.theme,10);note:SetFont(note.Font)
+                    api.Theme.textColor(note,'muted')
+                    note:SetJustification(1);note:SetTextOverflowPolicy(1)
+                    local box=sized(note,190,14)
+                    local slot=add(row.background:GetParent(),box)
+                    slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(3)
+                    slot:SetPadding({Left=0,Top=0,Right=32,Bottom=3})
+                    -- Never in the way of the value button underneath.
+                    box:SetVisibility(1)
+                    row.mcNote,row.mcNoteBox=note,box
                 end
             end
             local parentWidgets={}
@@ -623,6 +656,18 @@ function M.install(choices,controls,pages,options)
                 if setting.mcLabelRule then
                     local text=dynamic(setting.mcLabelRule,self.model,setting.label)
                     if text~=row.mcLabelText then api.setText(row.mcLabel,text);row.mcLabelText=text end
+                end
+                if row.mcNote then
+                    -- The value moves up to make room while its choice has a note.
+                    local note=setting.mcChoiceNotes[self.model.pending[i]]
+                    if note~=row.mcNoteText then
+                        if note then api.setText(row.mcNote,note) end
+                        row.mcNoteBox:SetVisibility(note and 3 or 1)
+                        local padding=row.value.Slot.Padding
+                        row.value.Slot:SetPadding({Left=padding.Left,Top=padding.Top,
+                            Right=padding.Right,Bottom=note and 12 or 0})
+                        row.mcNoteText=note
+                    end
                 end
                 for _,tab in ipairs(row.mcTabs or {}) do
                     if tab.cycle then

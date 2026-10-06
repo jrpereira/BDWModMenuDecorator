@@ -2,6 +2,9 @@
 
 ## v1.0.1
 
+- `mcChoiceNotes` gives picker choices a small muted second line under the
+  current choice, such as the module providing a template. It is copied onto
+  slot rows.
 - Keybind rows sharing `mcConflictScope` that bind the same key and trigger
   show a dim red key background on every edit; the navigation picker separating
   the two rows shows its choice and arrows in red. Apply is unchanged.

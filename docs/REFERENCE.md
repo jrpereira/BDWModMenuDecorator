@@ -96,7 +96,8 @@ one. Source Category rules are not carried. Only core DMM fields are copied, so
 inserted rows render as plain pickers, toggles or sliders. The exception is a
 row label rule (`mcLabelWhen`/`mcLabels`): it is copied when `mcLabelWhen` names
 a row the same contributor inserted earlier, and the row is skipped otherwise. A
-row named by `mcSlotLabel=1` keeps no label rule. Presets, navigation,
+row named by `mcSlotLabel=1` keeps no label rule. A picker's `mcChoiceNotes` is
+also copied. Presets, navigation,
 read-only and link rows cannot be inserted. With no valid rows the slot row
 shows unchanged. Each `rows` entry is all or nothing: one invalid setting skips
 that entry, logged as `SLOT_ROW_SKIPPED`, and other entries still insert.
@@ -246,6 +247,14 @@ DMM's keyboard/controller navigation is retained.
 `mcWrap=1` on an `mcReadOnly=1` picker shows its value as 13pt left-aligned
 text in a wider column, broken after commas so no line reaches 34 characters;
 the row grows to fit its lines.
+
+`mcChoiceNotes=<value>:<text>;<value>:<text>` on a picker gives choices a note,
+shown small and muted on a second line under the current choice, within DMM's
+40-pixel row; the choice's label moves up to make room. Each value must be one
+of the picker's `PresetValues` and appear once; the text is trimmed, cannot
+contain `;` and has at most 64 characters. A choice without a note shows one
+line as before. The note is presentation only: saved values are unchanged. Tab,
+cycle and header-tab pickers show no notes.
 
 Set `mcNavigation=1` on a picker to use its choices only for menu navigation.
 The picker can drive ordinary `VisibleWhen` / `VisibleValues` rules, but has no
