@@ -72,6 +72,16 @@ scheduled[1]()
 assert(initialized==2 and not has(events,'DMM_RESTART_REQUIRED'))
 print('PASS installing before DMM starts needs no restart')
 
+-- Hooks that ran and failed are reported as that failure, not as a restart.
+env,files,shared,scheduled=environment({[MAIN]=test.launcher(DMM,MCS),[ORIGINAL]='dmm main'})
+events,log=recorder()
+assert(Bootstrap.run(log,function() initialized=initialized+1 end,env)=='waiting')
+shared[test.failureKey]='broken hooks'
+scheduled[1]()
+assert(initialized==2 and has(events,'DMM_HOOKS_FAILED:broken hooks')
+    and not has(events,'DMM_RESTART_REQUIRED') and not has(events,'DMM_HANDSHAKE_FAILED'))
+print('PASS failed hooks are reported with their cause instead of asking for a restart')
+
 -- A DMM update puts its new main back; the previous copy of its main is replaced.
 env,files=environment({[MAIN]='dmm main 2',[ORIGINAL]='dmm main'})
 assert(test.install(env,DMM,MCS)=='installed' and files[ORIGINAL]=='dmm main 2' and files[MAIN]==test.launcher(DMM,MCS))
@@ -115,6 +125,7 @@ local function launch(enabled,hooks)
         dofile=function(path) calls[#calls+1]='run '..path end,
         pcall=pcall,assert=assert,tostring=tostring,debug=debug,
         print=function(text) printed[#printed+1]=text end,
+        ModRef={SetSharedVariable=function(_,key,value) shared[key]=value end},
     }
     assert(load(test.launcher(DMM,MCS),'@'..DMM..'main.lua','t',sandbox))()
     return calls,printed
@@ -129,6 +140,7 @@ assert(launched==1 and #calls==2 and calls[2]=='run '..ORIGINAL)
 local printed
 calls,printed=launch(true,{launch=function() error('broken hooks') end})
 assert(calls[#calls]=='run '..ORIGINAL and printed[1]:find('DMM hooks failed',1,true))
+assert(tostring(shared[test.failureKey]):find('broken hooks',1,true),'the launcher hands its failure to the bootstrap')
 local text=test.launcher(DMM,MCS)
 assert(text:find('Shoutout to DMM',1,true)==4 and text:find(test.mark,1,true)<512 and not text:find('C:/Mods',1,true))
 assert(test.launcher('C:/Mods/DawnwalkerModMenu/Scripts/','D:/Other/1_ModCore_Settings/Scripts/'):find('"D:/Other/1_ModCore_Settings/enabled.txt"',1,true))

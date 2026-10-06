@@ -3,9 +3,11 @@
 -- mod's own and DMM's.
 local M={}
 local levels={
-    DMM_REQUIRED='error',DMM_INCOMPATIBLE='error',DMM_LAUNCHER_FAILED='error',
+    -- Each of these leaves ModCoreSettings without its DMM integration.
+    DMM_REQUIRED='error',DMM_LAUNCHER_FAILED='error',DMM_HOOKS_FAILED='error',
+    DMM_INITIALIZATION_FAILED='error',DMM_BINDING_UNAVAILABLE='error',
     DMM_RESTART_REQUIRED='warn',DMM_DUPLICATE_INIT='warn',DMM_HANDSHAKE_FAILED='warn',
-    DMM_LAUNCHER_INSTALLED='info',READY='info',
+    DMM_LAUNCHER_INSTALLED='info',
     LIFECYCLE_PARTIAL='warn',
 }
 

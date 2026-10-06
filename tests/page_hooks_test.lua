@@ -159,7 +159,7 @@ page=providers[1]
 local writes=0
 Choices.fs={read=function() error('DMM must not read a hooks page config') end,
     write=function() writes=writes+1 end,rename=function() writes=writes+1 end,remove=function() end}
-assert(Hooks.install(Choices) and not Hooks.install(Choices),'installs once')
+assert(Hooks.install(Choices,report) and not Hooks.install(Choices,report),'installs once')
 local slots=assert(Slots.install(Choices,report,Menu))
 local model=Choices.open(page)
 assert(not model.error and model.provider==page and model.pending[1]==1 and model.committed[2]==1
@@ -187,6 +187,21 @@ failingLoad.mcHooks={contract=1,manifest=mccHooks.manifest,
 model=Choices.open(failingLoad)
 ok,warning=model:apply()
 assert(model.error:find('config unreadable',1,true) and not ok,'A failing load shows the page error and blocks Apply')
+-- Stored values the page cannot show fall back to defaults instead of breaking the menu;
+-- a value the setting's type can normalize is kept in canonical form.
+local invalid={}
+for key,value in pairs(page) do invalid[key]=value end
+invalid.mcHooks={contract=1,manifest=mccHooks.manifest,apply=mccHooks.apply,
+    load=function() return {MCC_Mode=7,MCC_Mirror='2'} end}
+logs={}
+Choices.mcNormalize=function(item,value) if item.id=='MCC_Mirror' then return tonumber(value) end end
+model=Choices.open(invalid)
+Choices.mcNormalize=nil
+assert(not model.error and model.pending[1]==0 and model.committed[1]==0
+    and model.pending[2]==2 and model.committed[2]==2 and not model:dirty(),
+    'An invalid stored value keeps the default; a normalizable one is kept canonical')
+assert(#logs==1 and logs[1]:find('HOOK_VALUES_SKIPPED MCC: MCC_Mode=7; defaults kept',1,true),
+    'Skipped stored values are reported: '..table.concat(logs,'\n'))
 local plain=Choices.open({id='Plain',choices={},testOnly=true})
 assert(not plain.error and plain.provider.id=='Plain','Pages without hooks keep DMM storage')
 assert(slots and Choices.open~=nil)

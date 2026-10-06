@@ -58,10 +58,22 @@ function M.manifest(hooks,context)
     return text
 end
 
+-- A loaded value the setting accepts, in canonical form; nil when it accepts none.
+local function accepted(choices,item,value)
+    local ok,index=pcall(choices.index,item,value)
+    if ok and index then return value end
+    local normalized=choices.mcNormalize and choices.mcNormalize(item,value)
+    if normalized==nil then return nil end
+    ok,index=pcall(choices.index,item,normalized)
+    if ok and index then return normalized end
+end
+
 -- Wraps choices.open so a page with storage hooks keeps its values out of DMM's config IO.
 -- DMM still provides editing, navigation and the Apply flow.
-function M.install(choices)
+-- report(event,detail) (optional) receives stored values that fall back to defaults.
+function M.install(choices,report)
     if choices.mcHooksVersion then return false end
+    report=report or function() end
     local open=choices.open
     choices.open=function(provider)
         local hooks=provider.mcHooks
@@ -77,9 +89,18 @@ function M.install(choices)
             local ok,why=pcall(function()
                 local values=hooks.load({page=context.page,directory=context.directory})
                 assert(type(values)=='table','load() must return a table')
+                -- An invalid stored value keeps the default; saving the page replaces it.
+                local skipped={}
                 for i,item in ipairs(model.items) do
                     local value=values[item.id]
-                    if value~=nil then model.pending[i],model.committed[i]=value,value end
+                    if value~=nil then
+                        local usable=accepted(choices,item,value)
+                        if usable~=nil then model.pending[i],model.committed[i]=usable,usable
+                        else skipped[#skipped+1]=item.id..'='..tostring(value) end
+                    end
+                end
+                if #skipped>0 then
+                    report('HOOK_VALUES_SKIPPED',context.page..': '..table.concat(skipped,', ')..'; defaults kept')
                 end
             end)
             if not ok then model.error=tostring(why) end

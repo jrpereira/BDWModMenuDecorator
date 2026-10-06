@@ -71,7 +71,7 @@ function M.publisher(log)
     function publisher:publish(kind,context)
         local ok,err=pcall(function()
             if not ModRef or not ModRef:GetSharedVariable(CLAIM) then return end
-            local previous=revision(ModRef:GetSharedVariable(DATA)) or 0
+            local previous=revision(ModRef:GetSharedVariable(DATA))
             assert(previous>=0 and previous<9007199254740991,'lifecycle revision exhausted')
             local payload=serialize(kind,context,previous+1)
             ModRef:SetSharedVariable(DATA,payload)
@@ -88,7 +88,7 @@ function M.install(log,onChange)
     if not ModRef or type(RegisterConsoleCommandHandler)~='function' then
         return nil,'DMM lifecycle notification API unavailable'
     end
-    local scope={enabled=false,epoch=0,path=nil,address=nil,treeAddress=nil,last=revision(ModRef:GetSharedVariable(DATA)) or 0}
+    local scope={enabled=false,epoch=0,path=nil,address=nil,treeAddress=nil,last=revision(ModRef:GetSharedVariable(DATA))}
     local function revoke()
         scope.epoch=scope.epoch+1;scope.path=nil;scope.address=nil;scope.treeAddress=nil
         if onChange then onChange(nil,scope.epoch) end

@@ -6,9 +6,11 @@
 local M={version=2}
 
 local READY='MC_DMM_Extension_v1.ready'
+-- The launcher stores why DMM's hooks failed, so the failure is reported as itself.
+local FAILURE='MC_DMM_Extension_v1.error'
 local CLAIM='MC_DMM_Bootstrap_v1.initialized'
 local MARK='-- ModCoreSettings DMM launcher'
-local FORMAT=2
+local FORMAT=3
 local ORIGINAL='main.dmm.lua'
 local STAGE='main.lua.mcs-new'
 local MAX_FILE=262144
@@ -43,7 +45,7 @@ local function launcher(dmmScripts,mcsScripts)
     local lines={
         '-- Shoutout to DMM\'s author, this launcher allows us to extend DMM with additional',
         '-- types (like key editor), while establishing it as a required module, thus preserving',
-        '-- and respecting the integrity of DMM as an independant module.',
+        '-- and respecting the integrity of DMM as an independent module.',
         '--',
         '-- Thanks for all the hard work! :D',
         '--',
@@ -64,7 +66,10 @@ local function launcher(dmmScripts,mcsScripts)
     add('        local chunk=assert(loadfile('..path(toScripts,mcsScripts,'dmm_extension.lua')..'))')
     add('        chunk().launch()')
     add('    end)')
-    add("    if not ok then print('[ModCoreSettings] DMM hooks failed: '..tostring(err)..'\\n') end")
+    add('    if not ok then')
+    add("        print('[ModCoreSettings] DMM hooks failed: '..tostring(err)..'\\n')")
+    add("        pcall(function() ModRef:SetSharedVariable("..string.format('%q',FAILURE)..',tostring(err)) end)')
+    add('    end')
     add('end')
     add('dofile(here..'..string.format('%q',ORIGINAL)..')')
     add('')
@@ -216,6 +221,9 @@ function M.run(log,initialize,overrides)
     local scheduled,why=pcall(env.defer,function()
         if finished or ready() then return end
         finished=true
+        -- Hooks that ran and failed need a fix, not a restart.
+        local failure=env.get(FAILURE)
+        if failure~=nil then log('DMM_HOOKS_FAILED',tostring(failure));return end
         log(changed and 'DMM_RESTART_REQUIRED' or 'DMM_HANDSHAKE_FAILED','restart the game to load the DMM hooks')
     end)
     if not scheduled or why==false then
@@ -225,5 +233,5 @@ function M.run(log,initialize,overrides)
     return 'waiting'
 end
 
-M._test={launcher=launcher,install=install,original=ORIGINAL,stage=STAGE,mark=MARK,readyKey=READY,claimKey=CLAIM}
+M._test={launcher=launcher,install=install,original=ORIGINAL,stage=STAGE,mark=MARK,readyKey=READY,claimKey=CLAIM,failureKey=FAILURE}
 return M

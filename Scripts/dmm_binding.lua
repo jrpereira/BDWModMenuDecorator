@@ -56,7 +56,7 @@ function M.install(log)
         if not allowed() then return end
         if not Discovery.valid(host) or not host:IsInViewport() or not host:IsActivated()
             or host:IsVisible()~=true or host:GetIsEnabled()~=true then
-            scope:invalidate('host inactive');return
+            scope:invalidate();return
         end
         if not active then
             active=true
@@ -127,7 +127,7 @@ function M.install(log)
         pending[epoch]=nil
         if scope:matches(path,epoch) then
             log(event,tostring(err))
-            scope:invalidate(event)
+            scope:invalidate()
         end
     end
     schedule=function(path,epoch,delay,selections)

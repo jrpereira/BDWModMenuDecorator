@@ -1,6 +1,6 @@
 -- Arrange ModCore providers as a browser tree before DMM builds its rows.
 local M = {}
-local ROOT_ID, OLD_FOUNDATIONS_ID = 'ModCore.browser.root', 'ModCore.browser.foundations'
+local ROOT_ID = 'ModCore.browser.root'
 
 local function heading(id, name, level, indent)
     return {id=id, name=name, author='ModCore', version='',
@@ -14,7 +14,7 @@ function M.arrange(providers)
     local first, seen = nil, {}
     for _, provider in ipairs(providers) do
         local id = provider.id
-        if id ~= ROOT_ID and id ~= OLD_FOUNDATIONS_ID then
+        if id ~= ROOT_ID then
             assert(not seen[id], 'duplicate browser provider: ' .. tostring(id))
             seen[id] = true
             local foundation = id == 'ModCoreControls' or id == 'ModCoreSettings'
@@ -51,9 +51,7 @@ end
 -- report(event,detail) (optional) receives failures.
 function M.install(pages, report)
     if pages.mcBrowserGroupsVersion then return false end
-    report = report or function(event, detail)
-        print('[ModCoreSettings] ' .. event .. ' ' .. tostring(detail) .. '\n')
-    end
+    report = report or function() end
     assert(type(pages)=='table' and type(pages.build)=='function', 'DMM pages API unavailable')
     local build = pages.build
     pages.build = function(tree, providers, status, api)
