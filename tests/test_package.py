@@ -39,8 +39,8 @@ class PackageTests(unittest.TestCase):
                 # Documents in docs/ are published at the module root.
                 for doc in ('README.md', 'CHANGELOG.md', 'BUILD.md', 'DEVELOPERS.md'):
                     self.assertIn('1_ModCore_Settings/' + doc, names)
-                # The Nexus description stays in the repository only.
-                self.assertNotIn('1_ModCore_Settings/NEXUS.md', names)
+                # The BBCode Nexus description stays in the repository only.
+                self.assertNotIn('1_ModCore_Settings/NEXUS.bb', names)
                 self.assertFalse(any('/docs/' in n for n in names))
                 self.assertFalse(any('/dlls/' in n or n.lower().endswith('.dll') for n in names))
                 self.assertIn('1_ModCore_Settings/Scripts/dirty_labels.lua', names)
