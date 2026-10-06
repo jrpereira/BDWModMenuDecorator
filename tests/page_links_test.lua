@@ -83,4 +83,50 @@ do
     assert(table.concat(calls,',')=='detail 1','missing host row falls back to the ordinary open')
 end
 
+-- mcLinkPage=<provider>:<slot> opens the slot's host page with the slot showing.
+do
+    local Contributions=require('menu_contributions')
+    local function open(slots)
+        local f={calls={},texts={}}
+        local hostItems={
+            {id='MCC_Page',mcNavigation=true,values={0,1},visibility={}},
+            {id='MCT_Template',mcSlotName='visuals',visibility={{target=1,values={[1]=true}}}},
+        }
+        f.host={items=hostItems,pending={0,0},sets={}}
+        function f.host:set(index,value) self.pending[index]=value;self.sets[#self.sets+1]=hostItems[index].id..'='..value end
+        f.source={saved={}}
+        function f.source:set(index,value) self.saved[index]=value end
+        function f.source:dirty() return false end
+        local providers={
+            {id='ModCoreTemplates.module.Fangdango',
+                choices={{id='Merged',mcNavigation=true,mcLinkPage='controls:visuals'}}},
+            {id='Fangdango',mcLinkSlot={host='ModCoreControls',slot='visuals'},choices={}},
+            {id='ModCoreControls',choices=hostItems},
+        }
+        local page={rows={{providerIndex=1},{providerIndex=2},{providerIndex=3}},controlStatus={}}
+        page.controls={show=function(self) self.model=f.source end,tick=function() return false end,
+            refresh=function() f.calls[#f.calls+1]='refresh' end,
+            select=function(_,index) f.calls[#f.calls+1]='select '..index end}
+        function page:showBrowser() f.calls[#f.calls+1]='browser' end
+        function page:showDetail(row)
+            f.calls[#f.calls+1]='detail '..row
+            if row==3 then self.controls.model=f.host end
+        end
+        local pages={build=function() return page end}
+        Links.install(pages,slots)
+        f.page=pages.build({},providers,nil,{setText=function(_,copy) f.texts[#f.texts+1]=copy end})
+        f.page.controls:show(1)
+        f.page.controls.model:set(1,1)
+        return f
+    end
+    local f=open({address=Contributions.address,provider=Contributions.provider})
+    assert(f.source.saved[1]==nil,'a slot link saves nothing')
+    assert(f.page.controls:tick()==true)
+    assert(table.concat(f.calls,',')=='browser,detail 3,refresh,select 2',table.concat(f.calls,','))
+    assert(table.concat(f.host.sets,',')=='MCC_Page=1','the host navigation reveals the slot')
+    -- Without a slot controller the address is an ordinary, unknown page id.
+    f=open(nil)
+    assert(f.page.controls:tick()==true and f.texts[1]=='controls:visuals page is unavailable.')
+end
+
 print('PASS page links open targets through the browser and refuse dirty pages')

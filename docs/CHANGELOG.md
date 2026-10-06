@@ -65,6 +65,15 @@
   an available slot.
 - Add `mcSlotLabel=1`: the first inserted row takes the slot row's label and
   level, so a host can present a contributed picker as a section heading.
+- Add `mcCategory=1`: a setting stands in for its group's heading, in the heading's
+  style, with the group's other rows indented beneath it. `mcSlotLabel=1` passes
+  it to the first inserted slot row.
+- Level-styled setting labels (`mcLevel`, `mcHeading`) show their size when first
+  drawn; they kept the stock size until another change reapplied the font.
+- `mcLinkPage` also takes a slot address (`<provider>:<slot>`): the link opens the
+  slot's host page with the slot showing.
+- Inserted slot rows keep their label rule (`mcLabelWhen`/`mcLabels`) when it names
+  a row the same contributor inserted earlier, so conditional labels work in slots.
 - Enlarge level-two setting labels, including Control Layout and Control Map,
   and inset submodule browser highlights with their rows.
 - Bind queued picker presses to the preceding hovered control sample and discard

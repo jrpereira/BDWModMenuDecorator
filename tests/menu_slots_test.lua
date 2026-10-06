@@ -295,6 +295,32 @@ do
     assert(first:find('mcLevel=3',1,true) and first:find('Label=Quickslots Visuals',1,true),first)
     assert(select(2,text:gsub('mcLevel=3',''))==1,'only the first inserted row takes the level')
     assert(page.choices[2].values[3]==7 and page.choices[2].mcSlotSource==mct,'still the source picker')
+    -- mcCategory passes to the named row the same way.
+    local category=labelled:gsub('mcLevel=3\n','mcCategory=1\n')
+    files['/cat/mod_settings.ini']=category
+    local catPage=provider('Category','/cat/mod_settings.ini',category)
+    assert(Slots.load(catPage,{visuals={one,two}},read,spy,report))
+    first=text:match('%[Setting%.mcSlot%.%d+%]\n(.-)\n\n')
+    assert(first:find('mcCategory=1',1,true) and select(2,text:gsub('mcCategory=1',''))==1,
+        'only the named row stands in for the heading')
+end
+-- A label rule naming a row the contributor inserted earlier is carried into the slot.
+do
+    local relabelled=source:gsub('VisibleValues=5|7\n','VisibleValues=5|7\nmcLabelWhen=MCT_Template\nmcLabels=7:Bar Other\n')
+    local mctLabel=provider('ModCoreTemplates','/mct/mod_settings.ini',relabelled,true)
+    local page=provider('ModCoreControls','/mcc/mod_settings.ini',host)
+    local text
+    local function spy(content) text=content;return Choices.parse(content) end
+    logs={}
+    assert(Slots.load(page,{visuals={{contributor='ModCoreTemplates',source=mctLabel,
+        settings={'MCT_Template','MCT_Other'}}}},read,spy,report),logs[1])
+    assert(text:find('mcLabelWhen=MCT_Template\nmcLabels=7:Bar Other',1,true),text)
+    local items=require('presentation').parse(text,Choices.parse(text))
+    local rule=items[3].mcLabelRule
+    assert(items[3].id=='MCT_Other' and rule and rule.source.id=='MCT_Template' and rule.values[7]=='Bar Other')
+    logs={}
+    assert(Slots.load(page,{visuals={{contributor='ModCoreTemplates',source=mctLabel,settings={'MCT_Other'}}}},
+        read,Choices.parse,report)==false and logs[1]:find('mcLabelWhen must name',1,true),tostring(logs[1]))
 end
 assert(not pcall(Choices.parse,host:gsub('mcSlot=visuals\n','mcSlotLabel=1\n')),'mcSlotLabel requires mcSlot')
 assert(not pcall(Choices.parse,host:gsub('mcSlot=visuals\n','mcSlot=visuals\nmcSlotLabel=yes\n')),'mcSlotLabel is 1')

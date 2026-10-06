@@ -98,6 +98,9 @@ function M.parse(content,items)
                 s.mcFont=level(r.mcLevel)
                 s.mcHeading=flag(r.mcHeading,'mcHeading') or false
                 s.mcReadOnly=flag(r.mcReadOnly,'mcReadOnly')
+                s.mcCategory=flag(r.mcCategory,'mcCategory')
+                assert(not s.mcCategory or r.mcLevel==nil and not s.mcHeading,
+                    'mcCategory cannot be combined with mcLevel or mcHeading')
                 s.mcWrap=flag(r.mcWrap,'mcWrap')
                 assert(not s.mcWrap or s.kind=='picker' and r.mcReadOnly=='1','mcWrap requires a read-only picker')
                 s.mcReferenceLabel=r.mcReferenceLabel
@@ -279,6 +282,8 @@ function M.install(choices,controls,pages,options)
                 local level=setting.mcHeading and 1 or setting.mcFont
                 M.style(row.mcLabel,level,api)
                 if level==2 then api.Theme.font(row.mcLabel,api.theme,20) end
+                -- Theme.font only writes the property; a built label shows it after SetFont.
+                if level then row.mcLabel:SetFont(row.mcLabel.Font) end
                 if level==1 or level==2 then
                     local slot=toggleShell(setting) and row.widget:GetContent().Slot or row.mcLabel.Slot
                     local padding=slot.Padding
@@ -680,7 +685,10 @@ function M.install(choices,controls,pages,options)
                 for i=heading.first,heading.last do
                     local row,setting=panel.rows[i],self.model.items[i]
                     if row.mcLabel and setting.mcFont==nil and not setting.mcHeader then
-                        local beforeCategory=not categoryAdded
+                        -- An mcCategory row stands in for its group's heading: it takes
+                        -- the heading's look, and the rows after it indent beneath it.
+                        local beforeCategory=setting.mcCategory or not categoryAdded
+                        if setting.mcCategory and row.visible then categoryAdded=true end
                         if row.mcCategoryStyle~=beforeCategory then
                             api.Theme.font(row.mcLabel,api.theme,beforeCategory and 16 or 14)
                             row.mcLabel:SetFont(row.mcLabel.Font)

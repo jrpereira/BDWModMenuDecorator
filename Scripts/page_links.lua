@@ -1,7 +1,10 @@
 -- A navigation picker with mcLinkPage=<page id> opens that page instead of saving a value.
+-- mcLinkPage=<provider>:<slot> opens the page hosting that slot with the slot showing.
 local M={version=1}
+local showSlot
 
-function M.wrap(page,providers,api)
+-- slots (optional): the menu_slots controller, which resolves slot addresses.
+function M.wrap(page,providers,api,slots)
     if type(page)~='table' or type(page.controls)~='table' then return page end
     local controls,pending=page.controls,nil
     local show,tick=controls.show,controls.tick
@@ -32,8 +35,14 @@ function M.wrap(page,providers,api)
             status('Apply or discard changes before leaving this page.')
             return true
         end
+        local host,slot
+        if slots then host,slot=slots.address(target) end
         for index,provider in ipairs(providers) do
-            if provider.id==target and not provider.noSettings then
+            local matched
+            if host then
+                matched=not provider.mcLinkSlot and slots.provider(provider.id)==host
+            else matched=provider.id==target end
+            if matched and not provider.noSettings then
                 for rowIndex,row in ipairs(page.rows) do
                     if row.providerIndex==index then
                         -- Go through the browser as DMM does. Hiding the source detail restores
@@ -41,6 +50,7 @@ function M.wrap(page,providers,api)
                         -- replacement can leave the activating picker alive and reactivate it.
                         if type(page.showBrowser)=='function' then page:showBrowser() end
                         page:showDetail(rowIndex)
+                        if slot then showSlot(page,slot) end
                         return true
                     end
                 end
@@ -80,18 +90,7 @@ function M.slotLinks(page,providers)
         for hostRow,candidate in ipairs(self.rows) do
             if providers[candidate.providerIndex].id==link.host then
                 local result=showDetail(self,hostRow)
-                local controls=self.controls
-                local model=controls and controls.model
-                if model and not model.error then
-                    for index,setting in ipairs(model.items) do
-                        if setting.mcSlotName==link.slot or setting.mcSlot==link.slot then
-                            reveal(model,index)
-                            controls:refresh()
-                            controls:select(index,true)
-                            break
-                        end
-                    end
-                end
+                showSlot(self,link.slot)
                 return result
             end
         end
@@ -99,12 +98,27 @@ function M.slotLinks(page,providers)
     end
 end
 
-function M.install(pages)
+-- On the page just shown, reveal and select the slot's first row.
+function showSlot(page,slot)
+    local controls=page.controls
+    local model=controls and controls.model
+    if not model or model.error then return end
+    for index,setting in ipairs(model.items) do
+        if setting.mcSlotName==slot or setting.mcSlot==slot then
+            reveal(model,index)
+            controls:refresh()
+            controls:select(index,true)
+            return
+        end
+    end
+end
+
+function M.install(pages,slots)
     assert(type(pages)=='table' and type(pages.build)=='function','DMM pages API unavailable')
     if pages.mcPageLinksVersion then return false end
     local build=pages.build
     pages.build=function(tree,providers,status,api)
-        return M.wrap(build(tree,providers,status,api),providers,api)
+        return M.wrap(build(tree,providers,status,api),providers,api,slots)
     end
     pages.mcPageLinksVersion=M.version
     return true

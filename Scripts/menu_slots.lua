@@ -4,7 +4,8 @@
 -- inserted rows to their source page's own model: storage, Apply events and config stay theirs.
 local M={version=1}
 local function trim(value) return (value or ''):match('^%s*(.-)%s*$') end
--- Inserted rows render as plain DMM controls; source presentation keys are not copied.
+-- Inserted rows render as plain DMM controls; source presentation keys are not copied,
+-- except a label rule naming an earlier inserted row.
 local COPIED={'Id','Type','Label','Description','PresetValues','PresetLabels','Presets','Default',
     'Minimum','Maximum','Step','Decimals','Prefix','Suffix'}
 
@@ -66,7 +67,8 @@ end
 -- name a row the same contributor inserted earlier in this slot; otherwise it takes the slot
 -- row's rule. DMM ANDs either with the slot group's Category rule. Source Category rules are
 -- not carried: contributors express that gating per row. With mcSlotLabel=1 on the slot
--- row, the first inserted row takes the slot row's Label and mcLevel: the host names it.
+-- row, the first inserted row takes the slot row's Label, mcLevel and mcCategory: the host
+-- names it.
 local function insertion(source,id,slot,number,earlier,first)
     local found
     for _,section in ipairs(sections(source.mcManifest or '')) do
@@ -85,6 +87,14 @@ local function insertion(source,id,slot,number,earlier,first)
         if value~=nil then out[#out+1]=key..'='..value end
     end
     if named and fields.mcLevel then out[#out+1]='mcLevel='..fields.mcLevel end
+    if named and fields.mcCategory then out[#out+1]='mcCategory='..fields.mcCategory end
+    -- The host names the first row under mcSlotLabel=1, so it keeps no label rule.
+    if not named and (found.mcLabelWhen or found.mcLabels) then
+        assert(found.mcLabelWhen and found.mcLabels and earlier[found.mcLabelWhen],
+            'mcLabelWhen must name a row this contributor inserted earlier in the slot')
+        out[#out+1]='mcLabelWhen='..found.mcLabelWhen
+        out[#out+1]='mcLabels='..found.mcLabels
+    end
     out[#out+1]='Group='..(fields.Group or fields.Section or fields.Category or 'Settings')
     local rule=fields
     if found.VisibleWhen or found.VisibleValues then

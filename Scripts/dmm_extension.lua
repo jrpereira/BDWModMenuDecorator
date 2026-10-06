@@ -85,7 +85,7 @@ extension={
         -- Wrapped after browser groups so contributed pages exist before ModCore grouping runs.
         menuPages.install(dmm.pages,function(content) return dmm.choices.parse(content) end,
             menuPages.reader(contributions,ModRef,read,report),report,slots,read,hooked)
-        pageLinks.install(dmm.pages)
+        pageLinks.install(dmm.pages,slots)
         local publisher=lifecycle.publisher(report)
         for _,name in ipairs({'providerPrepared','providerRefreshed','hostClosing'}) do
             dmm.events:on(name,function(context) publisher:publish(name,context) end)

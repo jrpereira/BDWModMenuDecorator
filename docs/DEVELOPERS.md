@@ -1,616 +1,115 @@
 # Developer guide
 
-- [Requirements and installation](#requirements-and-installation)
-- [Minimal integration](#minimal-integration)
-- [Field types: keybind](#field-types-keybind)
-- [Apply and persistence contract](#apply-and-persistence-contract)
-- [Discovery and layout constraints](#discovery-and-layout-constraints)
-- [Logging and integration checks](#logging-and-integration-checks)
-- [Known limitation: Delete](#known-limitation-delete)
-- [Menu scope and row ownership](#menu-scope-and-row-ownership)
-- [Menu pages](#menu-pages)
-- [Apply notifications](#apply-notifications)
-- [Presentation metadata](#presentation-metadata)
-- [Migrating missing defaults](#migrating-missing-defaults)
+ModCore Settings (MCS) extends Dawnwalker Mod Menu (DMM). Your mod declares
+settings and implements their behavior. DMM manages pending edits and Apply;
+MCS adds presentation, generated pages and custom field types.
 
-ModCoreSettings extends Dawnwalker Mod Menu (DMM): page presentation, contributed
-pages, and setting types DMM does not know, such as `Type=keybind`, a key-capture
-row with its own Tap/Hold control. Your mod continues to own its configuration and
-gameplay behavior; DMM owns pending edits, dirty state, Apply, Reset, and Restore.
+A **provider** is a page owner identified by its `[Mod] Id`. Keep provider IDs,
+setting IDs and config keys stable after users save settings.
 
-ModCoreSettings does **not** register gameplay bindings, implement Tap/Hold timing,
-or depend on UE4SSLuaEventBridge. Input providers can use the bridge separately. Choosing a key changes a setting. The menu can name a spell; it cannot cast it.
+## Add your first setting
 
-## Requirements and installation
-
-The current implementation targets Dawnwalker with UE4SS/Lua 5.4 and the tested DMM
-widget layout. It is not a generic settings framework for every Unreal game or DMM
-version. Install DMM and ModCoreSettings as separate UE4SS mods. Do not copy DMM
-source into your mod. Install Settings under `1_ModCore_Settings`.
-Remove the old `AdaptiveModMenu` mod folder before starting the game. ModCoreSettings reads
-`mc*` manifest fields only. Producers must emit this prefix; no legacy metadata translation is installed. Saved setting names and values are unchanged.
-
-A `mod.json` dependency states its version requirement as a comparison operator
-(`>=`, `>`, `<=`, `<`, `=`) followed by the dependency's own version number, written
-exactly as that mod writes it: `"version": ">= 1.0.7.1"` for Dawnwalker Mod Menu.
-A trailing `+` is the same as `>=`: `"1.0.7.1+"` means that version or later.
-Versions compare part by part on the dots, numerically, with missing parts as 0,
-so `1.0.7.1` is above `1.0.7` and below `1.0.8`.
-
-Your provider folder needs `mod_settings.ini` and its own configuration file, for example:
-
-```text
-Mods/
-  DawnwalkerModMenu/
-  1_ModCore_Settings/
-    enabled.txt
-    Scripts/main.lua
-  ExampleMod/
-    enabled.txt
-    mod_settings.ini
-    config.ini
-    Scripts/main.lua
-```
-
-Immediately before DMM opens a provider model, ModCoreSettings uses DMM's parsed provider
-settings to initialize its declared configuration. It creates a missing INI or
-adds missing assignments while preserving existing values, comments and unrelated
-keys. This applies to every ordinary provider opened by DMM, whether or not its
-settings request decoration. DMM test-only providers remain memory-only.
-
-DMM's installed schema parser validates the schema and the resulting configuration
-before saving. Invalid or ambiguous input is reported without substituting defaults
-for user values. DMM settings are numeric: `0` is retained as off/unbound; a literal
-`false` or empty numeric value is preserved but rejected by DMM validation.
-One schema-declared INI path per provider is supported, including existing nested
-directories; initialization does not create directories. Existing complete files
-are not rewritten. Interrupted configuration transactions retain recovery files
-and are reported for review rather than overwritten on the next provider open.
-
-Initialization completes synchronously before DMM reads configuration for the
-provider's settings page. It adds no polling or gameplay work. Your mod must still
-handle its own startup defaults because menu initialization can occur later.
-Restart after adding/changing manifest metadata; this is
-not a manifest or configuration hot-reload API. ModCoreSettings never edits DMM's
-files; it reaches DMM through a launcher (see "DMM launcher" below).
-
-## Minimal integration
-
-### Dirty-label presentation
-
-While the settings menu is open, ModCoreSettings moves DMM's value-side dirty marker to the
-left of the setting label and italicizes the label. A separate, non-interactive
-TextBlock occupies the existing left gutter; the label text and layout stay unchanged. It uses an italic face from
-the existing font when available, otherwise Slate font skew. Clean values restore
-the original face and skew. This covers recognized sliders, pickers and toggles,
-including settings without key decorations. Key and paired mode changes share
-the visible key row's indicator. Schema-declared literal stars are not removed.
-
-Dirty presentation observes only already-bound rows during ModCoreSettings's existing
-menu-scoped update. Presentation state is stored in a collapsed child owned by the
-row. No process-wide text hook, additional polling loop or configuration write is
-used for styling.
-
-Mapped-preset suppression happens in DMM's pending model before its row text is
-rendered. The decorator state only mirrors the resulting clean or dirty text; it
-does not expose a second value-mutation API or write settings through UI controls.
-
-### Mapped presets
-
-ModCoreSettings expands mapped presets inside DMM's own pending model. Declare a picker with
-`CustomValue`, a pipe-separated `MappedPresetTargets` list of setting IDs, and
-semicolon-separated `MappedPresetValues` entries. Each entry has the form
-`presetValue:targetValue|targetValue`, in target order. For example:
+Install the dependencies in the [README](README.md). In your mod folder, create
+`mod_settings.ini` with this complete numeric setting:
 
 ```ini
-MappedPresetTargets=Ability1|Ability1Mode
-MappedPresetValues=1:82|0;2:49|1
-CustomValue=0
+[Mod]
+Id=ExampleMod
+Name=Example Mod
+
+[Setting.Scale]
+Id=Scale
+Label=Scale
+Type=integer
+Minimum=50
+Maximum=150
+Step=10
+Default=100
+ConfigFile=config.ini
+ConfigSection=General
+ConfigKey=Scale
 ```
 
-The picker must declare values `0|1|2` in this example. Every non-Custom value
-needs a complete mapping. Targets may be sliders, pickers or toggles; values must
-fit their declared ranges, steps or choices. Overlapping and nested presets are
-rejected, including overlap with DMM's ordinary `PresetTargets`.
-
-Selecting a preset synchronously updates all targets before DMM refreshes or
-applies. Preset-derived target changes hide their dirty indicators while retaining
-the actual pending/committed differences. A manual target edit selects Custom and
-marks only that target against the selected preset's visual baseline. Returning
-all targets to a named preset selects it automatically. Custom cannot be chosen
-directly. Apply and Restore clear the visual baseline.
-Apply and Restore remain DMM operations. Opening an inconsistent saved preset
-preserves its keys and changes the pending picker to Custom.
-
-### DMM launcher
-
-Dawnwalker Mod Menu has no extension API, and ModCoreSettings does not patch its
-files. At startup `dmm_bootstrap.lua` keeps DMM's own `Scripts/main.lua` as
-`main.dmm.lua` and puts a small launcher in its place. UE4SS still starts
-`main.lua`; the launcher, while ModCoreSettings is enabled, calls
-`dmm_extension.lua`'s `launch()` inside DMM's Lua state, then always runs
-`main.dmm.lua`. A failed launch is logged and DMM still starts unchanged.
-
-`launch()` requires DMM's `choices`, `controls`, `pages` and `nativeactions`
-before DMM's main does, so DMM later receives the same, already hooked module
-tables. `dmm_events.lua` recreates the `providerPrepared`, `providerRefreshed`
-and `hostClosing` boundaries by wrapping the panel `controls.build` returns and
-`nativeactions.new`/`close`; the extension then installs its mapped-preset,
-presentation, migration, page and lifecycle wrappers as before. No native DLL,
-additional runtime or gameplay timer is used.
-
-The launcher holds only paths, relative to its own folder (absolute only when DMM and
-this mod sit on different drives). It opens with a short thank-you note to DMM's author.
-The bootstrap rewrites it when the layout changes and installs it again when DMM's
-own `main.lua` comes back (a DMM update or a mod-manager redeploy), replacing the
-previous `main.dmm.lua`. Writes are staged and verified; a failed install puts
-DMM's own `main.lua` back. Renaming keeps a mod manager's hard link to its staged
-copy intact. When DMM has already started in the boot that installs the
-launcher, the hooks load from the next start (`DMM_RESTART_REQUIRED`).
-To remove the launcher by hand, delete `main.lua` and rename `main.dmm.lua` to
-`main.lua`.
-
-Offline tests exercise the Lua extension and UI modules. Validate native widget
-behavior against the supported DMM version in-game.
-
-### Field types: keybind
-
-ModCoreSettings adds setting types DMM does not know (`field_types.lua`). DMM
-still builds such a row as its toggle shell (label, row, navigation and
-description) and keeps its value, as text, in its own model; the type's editor
-draws the controls, reads them (getter) and fills them (setter). Changed rows,
-Apply, Reset and Restore stay DMM's. The parse hook puts these settings at their
-manifest positions among DMM's, keeps DMM's visibility and preset references
-pointing at the right settings, and applies `VisibleWhen` and category rules to
-them too. Applied notifications carry only number values.
-
-`Type=keybind` (`keybind_editor.lua`) is one setting holding `none` or
-`<FKey>|<trigger>`, for example `LeftAlt|Hold`; number keys are written as
-digits (`1|Tap`). The row shows an X to clear it (with `Optional=1`), the key box
-(click, then press a key; Escape cancels; gamepad keys and modifier chords are
-refused) and the trigger control (click to cycle). While unbound the key shows an
-italic placeholder and, with `DefaultControl=IA_*`, the player's keys for that
-action from the Settings key profile beside it.
+Restart and open **Example Mod** in DMM. Change Scale to `120` and Apply. The
+mod's `config.ini` should then contain:
 
 ```ini
-[Setting]
-Id=Jump
-Label=Jump
+[General]
+Scale=120
+```
+
+MCS initializes missing numeric defaults when the page opens. It preserves
+existing values and unrelated content, and reports invalid data. Parent directories
+must already exist. Your gameplay code still needs startup defaults because it
+can run before the player opens this page.
+
+## React to Apply
+
+Copy `Scripts/settings_api.lua` unchanged into your mod's `Scripts` folder.
+In `Scripts/main.lua`, subscribe to your provider ID:
+
+```lua
+local Settings = require('settings_api')
+local scale = 100 -- replace with your saved config value at startup
+local unsubscribe = Settings.subscribe('ExampleMod', function(event)
+    scale = event.values.Scale
+    -- Apply scale to your feature; dispatch UObject work to the game thread.
+end)
+-- Call unsubscribe() when your mod shuts down.
+```
+
+The callback runs after a successful save. It receives `providerId`, `revision`,
+`values`, and `changes` (`{old=...,new=...}` per changed ID). Events contain numeric
+settings only and do not replay startup values. Use one subscriber per provider;
+a second subscription in the same client replaces its callback. See the
+[notification contract](REFERENCE.md#apply-notifications) for ownership details.
+
+## Add a keybind
+
+A keybind requires a [generated page with storage hooks](REFERENCE.md#page-hooks),
+because DMM's ordinary INI writer accepts numbers only. This is a manifest
+fragment for such a page:
+
+```ini
+[Setting.MyAction]
+Id=MyAction
+Label=My action
 Type=keybind
 Triggers=Tap|Hold
-Default=SpaceBar
+Default=K|Tap
 Optional=1
-DefaultControl=IA_Jump
 ```
 
-`Default` is `none` (or `0`), `<FKey>` (the first listed trigger) or
-`<FKey>|<trigger>`. The first listed trigger is also the one a newly assigned
-key takes. Keybinds need a page whose hooks own its
-storage: on a page saved through DMM's own file the page shows an error, because
-DMM writes numbers only.
-
-## Apply and persistence contract
-
-1. Native capture updates the selector's reflected `SelectedKey` property.
-2. The decorator converts the FKey name to the stored numeric representation and
-   writes the stock numeric slider once.
-3. DMM ingests that change, marks it dirty, and enables its normal Apply action.
-4. The decorator mirrors the stock value and DMM's dirty label, without waiting for acknowledgement or retrying submission.
-5. DMM saves on Apply; your provider must reload the saved config and update gameplay.
-
-Do not save directly from the decorator or bypass DMM's pending state. Escape
-cancels capture and should preserve both the previous key and any earlier unsaved
-changes. A key write is submitted once: Restore/Reset must be able to
-supersede it. Seeing a new key label alone is not proof that DMM ingested or saved it.
-
-## Discovery and layout constraints
-
-DMM discovers and parses providers. ModCoreSettings's parser extension enriches those exact
-in-memory setting objects with decoration metadata, and DMM places the provider ID,
-setting ID, kind and object reference on each row-owned marker during construction.
-Give every provider a unique `[Mod] Id` and every setting an explicit unique `Id`.
-DMM's duplicate-provider policy remains authoritative.
-
-The ModCore browser groups `ModCoreControls`, `ModCoreSettings`, and providers whose
-IDs start with `ModCoreTemplates.module.`. Other providers can opt into the module
-group by setting `mcBrowserGroup='module'` on their in-memory DMM provider object.
-Unmarked providers keep their normal DMM position.
-
-ModCoreSettings accepts a page only when its row markers identify one provider and contain
-unique setting IDs whose kinds match their DMM setting objects. It does not infer
-identity from row order or localized labels. DMM lifecycle callbacks provide the
-completed provider ScrollBox after construction and after visibility refreshes.
-Changes to DMM's marker or widget hierarchy can still require compatibility work.
-
-UObject work is dispatched to the game thread. Do not import this mod's internal Lua
-modules from a provider: presentation is configured through manifest metadata. The supported
-[Apply notification API](#apply-notifications) is a separate integration surface.
-
-## Logging and integration checks
-
-`UE4SS.log` contains one ready message plus actionable failures under `[ModCoreSettings]`.
-Verbose construction, binding and capture traces are removed; there is no debug-mode toggle.
-Discovery runs once per coalesced DMM provider callback, after DMM completes row
-construction. The callback normally supplies the exact provider ScrollBox; one
-bounded selected-tree traversal remains as recovery when that selection is unavailable.
-There is no periodic tree scan or timed discovery retry. A later provider callback
-rebuilds scope after page reconstruction or visibility changes.
-Control synchronization remains at 50 ms within that scope and stops when no usable controls remain, using fresh child-path traversal
-from the current host root rather than repeated global lookups for each control. Each eligible update performs exact owner/host lookups; there is no global widget enumeration
-or permanently running discovery timer. Closing/loading revokes deferred work;
-obsolete queued callbacks drain without UObject access or rescheduling.
-For your integration, test changes, the dirty marker and Apply, persistence after
-reopening and restarting, Escape cancellation, Reset/Restore and the provider's
-actual gameplay behavior after Apply. Automated mocks cannot validate native paths.
-
-## Menu scope and row ownership
-
-Decoration requires the exact visible, active DMM host supplied by its lifecycle
-callback. Every update resolves that host and validates its address, viewport,
-activation, visibility and WidgetTree identity. DMM's close callback retires the
-scope; the next provider callback can create a new one. A lifecycle callback
-exception cancels the current scope. Actionable errors include the setting and
-original failure reason; repeated failures disable only that control until the next
-page event.
-
-A collapsed TextBlock inside the key overlay stores versioned scalar control state.
-Every created widget uses the row's WidgetTree as outer and attaches beneath its
-surface. Row presence determines decoration presence. Reopening an intact page
-adopts the existing subtree and reconnects its temporary input routing. A new row
-has no marker and receives a new decoration. No persistent host/row decorated
-registry or partial-child repair scan exists.
-
-Lua bindings and primitive traversal routes are temporary, discarded on scope changes. They support active input updates and never determine whether a row has been decorated. Capture/presentation state is compared with the last successfully saved scalars in the temporary binding; unchanged state is neither serialized nor written. Persistent state remains on the row. Pending click delivery is transient and cleared on scope changes. Construction failures roll back mutations; repeated update failures stop that control until the next page event rather than dismantling its decoration. Attached widgets leave the page with their row; final UObject reclamation follows Unreal garbage collection.
-
-## Menu pages
-
-ModCoreSettings is the only DMM integration. Other mods never install a DMM
-extension or call DMM directly; to add generated menu pages they publish data
-through `Scripts/menu_contributions.lua`. Vendor that file unchanged and publish
-from the ordinary mod state:
-
-```lua
-local Menu=require('menu_contributions')
-local pages=Menu.publisher(ModRef,{id='ExampleMod',directory='<absolute writable folder>'})
-pages:publish({pages={
-    {id='ExampleMod',name='Example',attach='ExampleMod'},
-    {id='ExampleMod.speed',name='Speed',under='ExampleMod',
-        manifest=settingsManifest,configDirectory='<absolute folder for ConfigFile>'},
-}})
--- pages:withdraw() removes them; Menu.validate(id,{pages=...}) checks offline.
-```
-
-Page fields: `id` (the contributor id or `<id>.*`; it is the `providerId` in Apply
-notifications), `name`, optional `author`, `version`, `description`, `visible`,
-`manifest` with `configDirectory`, and at most one of `under` (an earlier page of
-the same contributor) or `attach` (a mod folder name). `link` makes a
-[slot link](#slot-rows) entry. `group='module'` puts the
-page in the ModCore browser group.
-
-Placement on every menu build:
-
-- `under`: after the parent and its earlier children, indented.
-- `attach`: matched case-insensitively against a mod's name, id or detected
-  folder. A detected placeholder without settings is hidden while the page is
-  shown. Otherwise the page follows that mod, indented, unless it is a module
-  group page. A name matching several mods rejects the contributor. A page with
-  `visible=false` still hides its detected placeholder.
-- Otherwise: sorted by name with other mods, so a page that returns does not move.
-
-Contributed pages need no `mod_settings.ini` on disk; ModCoreSettings keeps
-their manifest in memory and only uses `configDirectory` to resolve `ConfigFile`.
-
-Publishing writes a new generation of files and then switches the contributor's
-shared variable; the menu keeps showing the previous generation until then.
-`publish` rejects structurally invalid pages. Settings manifests are parsed when
-the menu builds; any failure (manifest, id collision, ambiguous `attach`) skips
-that contributor's pages and is logged once. The rest of the menu is unaffected.
-
-### Slot rows
-
-A page can reserve a place for another mod's settings. Mark a read-only row as
-the slot:
-
-```ini
-[Setting.MCC_Visuals_Pending]
-Id=MCC_Visuals_Pending
-Type=picker
-Label=Quickslot templates
-Group=Visuals
-PresetValues=0|1
-PresetLabels=Coming soon|Coming soon
-mcReadOnly=1
-mcSlot=visuals
-```
-
-Slot names are letters, digits and `_`, at most 64 characters, unique per page.
-The page needs explicit `Id`s on every setting. Contributors address a slot as
-`<provider id>:<slot>`; a `ModCore<Name>` provider may also be written as its
-lowercase `<name>`, so `controls:visuals` and `ModCoreControls:visuals` are the
-same slot. A contributor publishes settings from one of its own manifest pages
-(which may be `visible=false`):
-
-```lua
-pages:publish({pages={...},rows={
-    {page='ModCoreTemplates',slot='controls:visuals',settings={'MCT_Template','MCT_RingSize'}},
-}})
-```
-
-When the page loads, the listed settings replace the slot row in place, in
-contributor and list order. Each takes the slot's `Group`, so the group's
-Category rule gates it. A row carries its own `VisibleWhen`/`VisibleValues`
-only when they name a row the same contributor inserted earlier in that slot.
-DMM ANDs that rule with the Category rule. A row without its own rule takes the
-slot row's rule; a slot row with its own `VisibleWhen` rejects rows that bring
-one. Source Category rules are not carried. Only core DMM fields are copied, so
-inserted rows render as plain pickers, toggles or sliders. Presets, navigation,
-read-only and link rows cannot be inserted. With no valid rows the slot row
-shows unchanged. Each `rows` entry is all or nothing: one invalid setting skips
-that entry, logged as `SLOT_ROW_SKIPPED`, and other entries still insert.
-
-Add `mcSlotLabel=1` to the slot row to let the host name the slot. The first
-inserted row then takes the slot row's `Label` and `mcLevel`; later rows keep
-their own. To make that row stand in for the group heading, suppress the
-heading with `mcHeading=0` on the group's Category and give the slot row a
-heading `mcLevel`:
-
-```ini
-[Category.Visuals]
-VisibleWhen=MCC_Page
-VisibleValues=1
-mcHeading=0
-
-[Setting.MCC_Visuals_Pending]
-...
-Label=Quickslots Visuals
-mcLevel=3
-mcReadOnly=1
-mcSlot=visuals
-mcSlotLabel=1
-```
-
-Filled, the page shows one `Quickslots Visuals` row whose value side is the
-contributed picker; with no rows, the placeholder shows under the same label.
-The row stays the source's setting: storage, Apply and visibility are unchanged.
-`mcHeading` itself is not transferred; a page has at most one level-one heading.
-
-The page's model sees only its own settings: its configuration, initialization
-and Apply event never include inserted rows. Inserted rows edit the source
-page's model. The page's Apply commits its own settings first, then each
-dirtied source, which publishes its Apply event under the source page id. A
-source fails only its own commit; the host's event is still published. Restore,
-Reset and the unapplied-changes guard cover both. A source whose model cannot
-open leaves its rows inert. As on any page, unapplied changes are discarded
-when the page closes, so the same setting on two pages never holds two pending
-values.
-
-A `visible=false` page that is a row source shows as an ordinary page, in its
-declared place (`under`, `attach`), when none of its rows has an available
-slot: the host page is not listed or does not declare the slot. Its rows then
-work as on any page, with the same page id and storage. Build such a page to
-stand alone. Availability is decided per menu build; a row entry rejected
-later, while the page loads, does not bring the fallback back.
-
-A page with `link='<provider>:<slot>'` and no manifest is a browser entry for
-that slot. Selecting it opens the slot's page and sets the navigation pickers
-that gate the slot so its rows show; navigation never marks the page dirty.
-The entry is listed only while the host page declares the slot and the slot
-has rows. Otherwise it is hidden like `visible=false`, including any detected
-placeholder it claims. Link pages cannot have children.
-
-Rows and links need descriptor contract 2, so a ModCoreSettings build that predates
-slots skips the whole contribution, pages included.
-
-### Page hooks
-
-A page whose settings change at runtime, or that owns its own storage, names a
-hooks file instead of a manifest. ModCoreSettings loads it in its own menu
-state, once per session, and modules beside it can be `require`d:
-
-```lua
-{id='ExampleMod',name='Example',attach='ExampleMod',
-    hooks='<absolute path>/Scripts/mcs_page.lua',configDirectory='<absolute folder>'}
-```
-
-```lua
--- mcs_page.lua
-return {contract=1,
-    manifest=function(context) return settingsManifest end,           -- every menu build
-    load=function(context) return {[settingId]=value} end,             -- optional
-    apply=function(context,values,changes) return saved,warning end,   -- with load
-}
-```
-
-`context` is `{page=<page id>,directory=<configDirectory>}`. With `load` and
-`apply`, ModCoreSettings never reads or writes the page's config file: `load`
-supplies the values (missing ids keep their defaults), and Apply passes every
-value by id and the edited ones as `{old=,new=}`. `apply` returns the values it
-saved, which become committed and are published in the Apply notification, plus
-an optional warning. An error from `apply` rejects the Apply and keeps the page
-dirty; an error from `load` shows the page error. An error loading the file or
-from `manifest` skips the contributor like any other failure. Hooks pages need
-descriptor contract 3, which older ModCoreSettings builds skip.
-
-### Page links
-
-A navigation picker with `mcLinkPage=<page id>` opens that page instead of saving
-a value. It requires `mcNavigation=1` and works in any manifest. With unapplied
-changes the link is refused and the page shows a status message.
-
-## Apply notifications
-
-`Scripts/settings_api.lua` is ModCoreSettings's versioned, game-agnostic consumer API. A mod
-may vendor that file unchanged and subscribe to its own DMM provider ID:
-
-```lua
-local Settings=require('settings_api')
-local unsubscribe=Settings.subscribe('ExampleMod',function(event)
-    -- event.providerId, event.revision, event.values and event.changes
-end)
-```
-
-DMM publishes only after a successful, durable Apply. Delivery is event-driven;
-there is no file watcher or polling. Revisions are delivered at most once in a
-Lua state. `values` contains the complete applied numeric setting map and
-`changes` contains `{old=...,new=...}` only for changed IDs. Treat the event and
-its nested tables as read-only. Callback failure cannot turn a completed save
-into an Apply failure. Calling the returned function stops delivery to that
-callback.
-
-## Presentation metadata
-
-`mcType=tab` renders an ordinary picker as outlined, right-aligned choices
-with a 24-pixel right inset on the same row as its label. Choices sit 4 pixels
-apart; the selected choice's outline is drawn at full strength. It supports two to eight
-choices and retains DMM's keyboard/controller navigation, pending model and
-Apply/Restore behavior.
-
-`mcType=cycle` renders a picker as one button showing only the current choice at
-13pt; a click moves to the next choice, wrapping. The button is as wide as the
-keybind editor's key box and sits in its key column, so it lines up under keys.
-DMM's keyboard/controller navigation is retained.
-
-`mcWrap=1` on an `mcReadOnly=1` picker shows its value as 13pt left-aligned
-text in a wider column, broken after commas so no line reaches 34 characters;
-the row grows to fit its lines.
-
-Set `mcNavigation=1` on a picker to use its choices only for menu navigation.
-The picker can drive ordinary `VisibleWhen` / `VisibleValues` rules, but has no
-config key, never marks the menu dirty, and is omitted from Apply events. Its
-selected view lasts while the menu model is open. Navigation pickers use DMM's
-arrow selector unless they explicitly request another presentation.
-
-Set `mcTabsWidth` to an integer from 160 through 440 to reserve that total
-width in pixels for the horizontal choices. The default grows by option count
-up to 384 pixels. A two-option `mcTabsWidth=440` picker is twice the default
-220-pixel width while retaining 144 pixels for its label.
-
-`mcLevel=0` inherits the existing font. Levels 2–6 use sizes
-16, 15, 14, 12 and 11 respectively. Level2/3 use the heading color;
-Level4 uses normal body text; Level5/6 use
-muted text, with Level5 at 85% opacity. The property applies to setting labels
-and Category headings without changing control types.
-
-Set `mcHeading=true` on a setting to use the title style. On generated
-ModCoreTemplates module pages, that setting
-shares the mod page title row above the divider. Its setting label is hidden
-while the original control retains its value and navigation. Dirty styling is
-omitted from this title row. The Templates page keeps its heading settings in
-the normal settings list with title styling. This supports
-toggles, pickers and sliders; at most one setting per provider may be a heading.
-Mods still implement their settings' behavior.
-
-Categories can declare `mcHelp` to show Level5 explanatory text under
-the heading. DMM's `VisibleWhen` / `VisibleValues` rules still govern the group.
-
-Set `mcHeading=0` on a category to suppress only that category's heading:
-
-```ini
-[Category.Player Actions]
-mcHeading=0
-```
-
-The category remains a normal DMM group: its rows retain their manifest order,
-visibility rules, navigation and Apply/Restore behavior. Any shared `mcParent`
-heading remains visible while the category has visible rows. `mcHelp` is not
-rendered when its category heading is suppressed. `mcHeading` accepts
-`false`/`true` or `0`/`1` and defaults to `true` on categories.
-
-Categories can also share a parent heading without flattening that heading into
-each category label:
-
-```ini
-[Category.PrimaryWheel]
-mcParent=Interaction: Independent
-mcParentLevel=2
-mcLevel=3
-
-[Category.SecondaryWheel]
-mcParent=Interaction: Independent
-mcParentLevel=2
-mcLevel=3
-
-[Category.SelectiveBindings]
-mcParent=Interaction: Selective
-mcParentLevel=2
-mcLevel=3
-```
-
-`mcParent` is the displayed parent label. Categories with the same exact
-label share one parent heading and retain their own category headings as
-subgroups. `mcParentLevel` accepts levels 0–6 and defaults to 2; every
-category sharing a parent must use the same level. Parent headings do not add
-visibility rules. A provider that wants persistent Independent and Selective
-sections should leave their categories unconditional. If every subgroup under
-a parent is hidden by DMM, ModCoreSettings hides the otherwise empty parent heading.
-
-For labels that depend on another picker or toggle, settings and categories
-can declare:
-
-```ini
-mcLabelWhen=PrimaryWheel
-mcLabels=0:Secondary Wheel;1:Primary Wheel
-```
-
-Unlisted source values retain the original label. Category ordering is opt-in:
-
-```ini
-mcOrderWhen=PrimaryWheel
-mcOrders=0:20;1:10
-```
-
-Only opted-in categories exchange positions, in ascending rank order. Other
-categories remain in their original positions. Rows retain their setting IDs,
-config keys and children. Reordering occurs on a relevant value change, using
-DMM's existing menu refresh; no additional timer is created.
-
-## Migrating missing defaults
-
-`DefaultFrom=OldConfigKey` copies an existing value in the same `ConfigFile` and
-explicit `ConfigSection` only when the destination key is absent. The source
-must satisfy the destination range/choices and step. An invalid source prevents
-initialization instead of silently overwriting it. An explicit destination value
-always wins; an absent source uses the ordinary `Default`. Migration reads only
-existing values, so it does not depend on setting order or follow default chains.
-
-`DefaultFromMap=0:1;1:2` optionally converts the copied number through a finite
-map. An existing source must have a mapped entry. No expressions are evaluated.
-
-For cross-section or conditional copies, use ordered sections:
-
-```ini
-[DefaultRule.PositionFromLegacy]
-Target = Position
-SourceSection = Legacy Layout
-SourceKey = UpperX
-SourceDefault = 40
-WhenAbsent = General/Role
-WhenZero = Legacy Layout/Swap
-
-[DefaultRule.PositionFallback]
-Target = Position
-SourceSection = Legacy Layout
-SourceKey = LowerX
-SourceDefault = 20
-```
-
-`Target` is a setting ID with an explicit `ConfigSection`. Rule section names
-must be unique. Rules run in manifest order, at most 32 per target; the first
-matching rule with an available source supplies the missing value. A rule without
-`SourceDefault` is skipped when its source is absent. If no rule supplies a value,
-the setting's ordinary `Default` applies. A target cannot also use `DefaultFrom`.
-
-Both optional conditions must match. `WhenAbsent=Section/Key` tests whether the
-key existed in the original file. `WhenZero=Section/Key` accepts finite integers;
-zero or an absent key matches, while any nonzero integer does not. It is evaluated
-only after `WhenAbsent` matches. References are exact and case-sensitive, and
-read only the same configuration file's original snapshot. Explicit destination
-values bypass all source and condition evaluation. Consumed source values must
-satisfy the destination range, choices and step; malformed values fail instead
-of being clamped or replaced. Duplicate config sections/keys are rejected.
-
-Migration retains original bytes and unknown keys, adding only missing declared
-destinations in one file transaction. Providers declaring migrations also pass
-through an owned DMM open adapter: a failed migration sets DMM's normal error
-state and disables editing/Apply until the problem is corrected. Other providers
-use the original open path. No DMM source files are modified.
+The stored value is `none` or `<FKey>|<trigger>`: `K|Tap`, `LeftAlt|Hold`, or
+`1|Tap`. A bare default key takes the first listed trigger. `Optional=1` adds a
+clear button; `DefaultControl=IA_Name` displays the player's native keys while
+unbound. Your input code implements any inheritance and Tap/Hold timing.
+
+Capture changes DMM's pending value. Apply calls your storage hook with all
+stored values and changed IDs; return the saved values only after persistence
+succeeds. Raise an error to reject the Apply. Navigation/read-only rows are
+excluded. Numeric Apply events omit text keybinds, so reload your config when
+handling the event, as MCC does.
+
+Escape cancels capture. Modifier chords, Escape bindings, wheel directions and
+gamepad capture are unsupported.
+
+## Add presentation only when needed
+
+| Need | Metadata | Example |
+| --- | --- | --- |
+| Navigation picker | `mcNavigation=1` | Switch visible groups without saving a choice |
+| Tab choices | `mcType=tab` | Two to eight picker choices |
+| Compact cycling picker | `mcType=cycle` | Click to advance to the next choice |
+| Conditional rows | `VisibleWhen` / `VisibleValues` | Show a row when an earlier picker equals `1` |
+| Shared page area | `mcSlot` | Let MCT contribute visual settings to Controls |
+
+See the [integration reference](REFERENCE.md) for complete metadata, generated
+pages, links, presets and migration contracts. Use MCS metadata and the two
+vendored clients; internal UI modules are not a provider API.
+
+## Check your integration
+
+Use the [build guide](BUILD.md) for offline checks. In game, test Apply, Restore,
+Reset, reopening, restart persistence, and your feature's resulting behavior.
+A visible key label alone does not prove the value was saved or activated.

@@ -454,6 +454,63 @@ assert(editorRow.widget:GetContent().Slot.Padding.Left==36 and editorRow.mcLabel
     'Editor rows indent once, like toggle rows')
 items[4]=nil
 
+-- An mcCategory row stands in for its hidden group heading: it takes the heading's look
+-- and the rest of its group indents beneath it while it shows.
+do
+    -- The controls fixture always renders the shared items list.
+    local saved={}
+    for i,item in ipairs(items) do saved[i]=item end
+    local list=items
+    for i=1,3 do
+        list[i]={id='Visual'..i,kind=i==1 and 'picker' or 'toggle',group='Visuals',label='Visual '..i,
+            values={0,1},labels={'Off','On'}}
+    end
+    M.parse('[Category.Visuals]\nmcHeading=0\n[Setting.Visual1]\nId=Visual1\nmcCategory=1\n',list)
+    assert(list[1].mcCategory and not list[2].mcCategory)
+    local built=controls.build(widget(),{{choices=list}},api)
+    built:show(1)
+    local heading=built.panels[1].rows[1]
+    assert(heading.mcLabel.Font.Size==16 and heading.mcLabel.color=='muted'
+        and heading.widget:GetContent().Slot.Padding.Left==0
+        and heading.wrapper.Slot.Padding.Top==12,'the category row looks like a category heading')
+    for i=2,3 do
+        local row=built.panels[1].rows[i]
+        assert(row.mcLabel.Font.Size==14 and row.mcLabel.color=='body'
+            and row.widget:GetContent().Slot.Padding.Left==36,'rows indent beneath the category row')
+    end
+    function built.model:visibility() return {false,true,true} end
+    built:refresh()
+    local row=built.panels[1].rows[2]
+    assert(row.mcLabel.Font.Size==16 and row.widget:GetContent().Slot.Padding.Left==0,
+        'a hidden category row indents nothing')
+    assert(not pcall(M.parse,'[Setting.Visual1]\nId=Visual1\nmcCategory=1\nmcLevel=2\n',list),
+        'mcCategory excludes mcLevel')
+    for i=1,3 do items[i]=saved[i] end
+end
+
+-- Level-styled labels take their font when built, without waiting for another SetFont.
+do
+    local saved={}
+    for i,item in ipairs(items) do saved[i]=item end
+    local list=items
+    list[1]={id='Big',kind='picker',group='G',label='Big',values={0,1},labels={'Off','On'}}
+    M.parse('[Setting.Big]\nId=Big\nmcLevel=2\n',list)
+    local fonts={}
+    local plain=api.caption
+    api.caption=function(owner,text)
+        local w=plain(owner,text)
+        function w:SetFont(v) fonts[#fonts+1]=v.Size;self.Font=v end
+        return w
+    end
+    local built=controls.build(widget(),{{choices=list}},api)
+    built:show(1)
+    api.caption=plain
+    local found=false
+    for _,size in ipairs(fonts) do if size==20 then found=true end end
+    assert(found,'a level-two label applies its 20pt font')
+    for i=1,#saved do items[i]=saved[i] end
+end
+
 -- A redraw between press and release must not turn one physical click into
 -- another new press. The next press in a double click must still be accepted.
 local arrow=initial.panels[1].rows[1].parts[1]

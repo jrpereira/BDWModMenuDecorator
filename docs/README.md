@@ -1,76 +1,49 @@
 # ModCore Settings
 
-Add key-binding pickers, Tap/Hold selectors, presets, and conditional settings
-through declarative metadata, with Apply, Reset, and persistence support.
-Compatible with Dawnwalker Mod Menu.
+ModCore Settings (MCS) adds keybind editors, navigation, presets and contributed
+pages to Dawnwalker Mod Menu (DMM). Your mod defines settings; DMM manages pending
+edits and Apply; your mod applies the saved values to gameplay.
 
-Define presentation in your provider's settings manifest. Your mod interprets
-the saved values and implements input behavior; Settings supplies the controls.
-Less widget plumbing, more actual mod.
+## Choose the right module
 
-## Features
+| Module | Responsibility |
+| --- | --- |
+| ModCoreSettings (MCS) | Menu controls, pending edits and Apply |
+| ModCoreControls (MCC) | Input bindings and quickslot actions |
+| ModCoreTemplates (MCT) | Visual templates, settings and object lifecycle |
 
-- A `keybind` setting type: one row with key capture, its own Tap/Hold control,
-  an optional clear button and the default keys, saved as text (`LeftAlt|Hold`).
-- Mapped presets and dirty-setting indicators.
-- Navigation tabs, conditional labels, grouped headings, and typography levels.
-- Missing-default initialization that preserves existing user values.
-- Durable Apply notifications for consumers.
+Start with the [developer guide](DEVELOPERS.md) to add a numeric setting and
+receive Apply notifications. Keybinds need custom storage hooks; they cannot use
+DMM's numeric INI writer directly.
 
 ## Requirements and installation
 
-Use UE4SS with Lua 5.4 and Dawnwalker Mod Menu (developed against 1.0.7.1).
-ModCoreSettings does not edit DMM's files: it keeps DMM's `main.lua` as
-`main.dmm.lua` and starts it through a small launcher, so the first start after
-installing either mod may ask for a restart. Install Settings under `Mods/1_ModCore_Settings`, enable it through
-UE4SS or your mod manager, and disable the old `AdaptiveModMenu` installation.
-Restart after installation or metadata changes.
+Use Dawnwalker, UE4SS with Lua 5.4, and DMM 1.0.7.1 (the declared minimum).
+Install and enable MCS under `Mods/1_ModCore_Settings`; disable the old
+`AdaptiveModMenu` installation. MCS itself does not require UE4SSLuaEventBridge.
 
-UE4SSLuaEventBridge is not required for this module. An input provider may
-require it separately.
+MCS renames DMM's `Scripts/main.lua` to `main.dmm.lua` and installs a launcher
+as `main.lua`. The launcher loads MCS inside DMM's Lua state, then runs DMM's
+original entry point. If DMM already started, restart when
+`DMM_RESTART_REQUIRED` is reported. Restart after metadata changes too.
 
-## Add a key-binding control
+## Behavior and limits
 
-Keybinds need a page whose storage hooks own its settings (see the developer
-guide's Page hooks); DMM's own config writer stores numbers only.
-
-```ini
-[Setting.MyAction]
-Id = MyAction
-Label = My action
-Type = keybind
-Triggers = Tap|Hold
-Default = K
-Optional = 1
-DefaultControl = IA_MyAction
-```
-
-The value is `none` or the key's Unreal name and its trigger, `K|Tap`; number
-keys are written as digits (`1|Tap`). Click the key box and press a key to bind
-it (Escape cancels), click the trigger to cycle it, and with `Optional = 1` use
-the red `X` to clear it. While unbound the row shows an italic `optional`
-placeholder and, with `DefaultControl`, the player's keys for that game action.
-
-## Limits
-
-- Modifier chords, Escape bindings, mouse-wheel directions and gamepad capture
-  are unsupported for keybinds.
-- Dirty-label synchronization runs every 50 ms while the menu scope is usable.
-- DMM widget or lifecycle changes can require compatibility updates.
+- Numeric settings use ordinary DMM storage; keybind values are text such as
+  `K|Tap` and need a page whose hooks save them.
+- Navigation and read-only rows are omitted from persistence and Apply events.
+- Apply notifications contain numeric values; consumers reload text bindings.
+- Key capture excludes modifier chords, Escape, wheel directions and gamepads.
+- MCS depends on DMM's widget layout; offline tests do not prove live UI compatibility.
 
 ## Logging
 
-ModCoreSettings writes to the UE4SS log at levels TRACE, DEBUG, INFO, WARN, ERROR
-and CRITICAL. Only WARN and above are written by default. To see more, create
-`Mods/1_ModCore_Settings/log_level.txt` containing one level name, such as `debug`,
-and restart the game. An unknown level is reported once and WARN is used.
-
-Other mods can use the same logger by vendoring `Scripts/mc_log.lua` unchanged:
-`require('mc_log').new({name='MyMod',path=modRoot..'/log_level.txt'})` returns a
-logger with `trace`, `debug`, `info`, `warn`, `error` and `critical`.
+Logs appear in `UE4SS.log`. The default level is WARN. For more detail, put
+`debug` in `Mods/1_ModCore_Settings/log_level.txt` and restart.
 
 ## Documentation
 
-- [Developer guide](DEVELOPERS.md): integration contracts and examples.
-- [Build guide](BUILD.md): source preparation and tests.
-- [Changelog](CHANGELOG.md): changes by version.
+- [Developer guide](DEVELOPERS.md): first setting, Apply and keybinds.
+- [Integration reference](REFERENCE.md): metadata, pages, slots and migrations.
+- [Build guide](BUILD.md): offline tests and in-game checks.
+- [Changelog](CHANGELOG.md): version history.
