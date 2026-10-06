@@ -522,16 +522,25 @@ function M.install(choices,controls,pages,options)
                 elseif setting.mcChoiceNotes and row.value and not row.mcHeaderTabs then
                     -- A choice's note sits under DMM's value, small and muted like the
                     -- keybind editor's "default", inside the 40-pixel row. It overlays
-                    -- the row so DMM's value button keeps its structure, aligned with
-                    -- that button: left of the 32-pixel right arrow, at its 190-pixel width.
+                    -- the row so DMM's value button keeps its structure, taking the
+                    -- value's width and place from DMM's own size boxes: after the
+                    -- label column and left arrow. The text is centered in that width.
+                    local function boxWidth(widget,fallback)
+                        local ok,width=pcall(function() return widget:GetParent().WidthOverride end)
+                        return ok and tonumber(width) or fallback
+                    end
+                    local left=boxWidth(row.widget,330)+boxWidth(row.parts[1].widget,32)
                     local note=api.caption(tree,'')
-                    api.Theme.font(note,api.theme,10);note:SetFont(note.Font)
+                    api.Theme.font(note,api.theme,11);note:SetFont(note.Font)
                     api.Theme.textColor(note,'muted')
                     note:SetJustification(1);note:SetTextOverflowPolicy(1)
-                    local box=sized(note,190,14)
+                    local box=new('SizeBox')
+                    box:SetWidthOverride(boxWidth(row.parts[2].widget,190));box:SetHeightOverride(16)
+                    local noteSlot=api.need(box:SetContent(note),'MCS choice note')
+                    noteSlot:SetHorizontalAlignment(2);noteSlot:SetVerticalAlignment(2)
                     local slot=add(row.background:GetParent(),box)
-                    slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(3)
-                    slot:SetPadding({Left=0,Top=0,Right=32,Bottom=3})
+                    slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(3)
+                    slot:SetPadding({Left=left,Top=0,Right=0,Bottom=2})
                     -- Never in the way of the value button underneath.
                     box:SetVisibility(1)
                     row.mcNote,row.mcNoteBox=note,box

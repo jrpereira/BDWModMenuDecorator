@@ -719,11 +719,15 @@ local noteUi=controls.build(widget(),{{choices=items}},api)
 noteUi:show(1)
 local noteRow=noteUi.panels[1].rows[1]
 local noteBox=noteRow.mcNoteBox
--- The note overlays the row, aligned with DMM's 190-pixel value button.
+-- The note overlays the row with the value's width and place, read from DMM's
+-- size boxes; these test rows have none, so DMM's 330+32 and 190 pixels apply.
+local noteSlot=noteBox.Slot
 assert(noteBox:GetParent()==noteRow.background:GetParent() and noteBox.WidthOverride==190
-    and noteBox.Slot.HorizontalAlignment==3 and noteBox.Slot.Padding.Right==32
-    and noteBox.Slot.VerticalAlignment==3,'the note sits under the value, left of the right arrow')
-assert(noteRow.mcNote.Font.Size==10 and noteRow.mcNote.color=='muted','the note is small and muted')
+    and noteSlot.HorizontalAlignment==1 and noteSlot.Padding.Left==362 and noteSlot.VerticalAlignment==3,
+    'the note takes the value\'s width, under it')
+assert(noteRow.mcNote.Slot.HorizontalAlignment==2 and noteRow.mcNote.Slot.VerticalAlignment==2,
+    'the note is centered in that space')
+assert(noteRow.mcNote.Font.Size==11 and noteRow.mcNote.color=='muted','the note is small and muted')
 assert(#noteRow.parts==3 and noteRow.value.parent~=noteBox,'DMM\'s value keeps its place')
 -- None has no note: one line, as today.
 assert(noteBox.visible==1 and noteRow.value.Slot.Padding.Bottom==0)
