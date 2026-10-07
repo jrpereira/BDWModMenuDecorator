@@ -118,6 +118,28 @@ assert(modeText.text=='Hold' and inner(line.children[1]).visibility==0)
 assert(line.children[5].visibility==0,'X shows for a bound optional key')
 print('PASS a bound key shows its trigger, the key and X')
 
+-- TriggerLabels changes only what Mode shows; values keep the trigger names.
+do
+    local labelled=Keybind.declare({Triggers='Hold|Tap',TriggerLabels='Hold|Toggle'})
+    local labelledRow=toggleRow()
+    local labelledEditor=Keybind.build(labelledRow,labelled,{api=api,tree={},modules={}})
+    local labelledLine=find(labelledRow.widget:GetContent():GetChildAt(1),function(w) return w.kind=='HorizontalBox' end)
+    local mode=find(labelledLine.children[1],function(w) return w.kind=='TextBlock' end)
+    local button=find(labelledLine.children[1],function(w) return w.kind=='Button' end)
+    labelledEditor:set('J|Tap','none')
+    assert(mode.text=='Toggle','Tap shows as Toggle')
+    assert(Keybind.normalize(labelled,'J|Toggle')==nil and Keybind.valid(labelled,'J|Tap'),'labels are never values')
+    button.pressed=true;assert(labelledEditor:tick()==nil)
+    button.pressed,button.hovered=false,true
+    assert(labelledEditor:tick()=='J|Hold','Mode cycles the stored trigger names')
+    labelledEditor:set('J|Hold','none')
+    assert(mode.text=='Hold')
+    for _,fields in ipairs({{Triggers='Hold|Tap',TriggerLabels='Toggle'},{Triggers='Tap',TriggerLabels=''}}) do
+        assert(not pcall(Keybind.declare,fields),'one non-empty label per trigger')
+    end
+end
+print('PASS trigger labels change what Mode shows, never the stored value')
+
 -- A default that cannot be resolved yet is looked up again on the next render.
 do
     local available=false

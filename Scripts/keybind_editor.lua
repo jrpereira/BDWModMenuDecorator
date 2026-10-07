@@ -4,6 +4,8 @@
 -- while unbound, the key box shows the default control's keys.
 --
 -- Manifest fields: Triggers=Tap|Hold (the first is the default trigger),
+-- TriggerLabels=Toggle|Hold (what the Mode control shows for each trigger, in order;
+-- display only: the stored value keeps the trigger name),
 -- Default=none|<FKey>|<FKey>|<trigger>, Optional=1, DefaultControl=IA_*,
 -- mcConflictScope=<name> (rows on a page sharing it must not bind the same key and trigger).
 local M={}
@@ -46,6 +48,15 @@ function M.declare(fields)
         seen[name:lower()]=true
     end
     assert(#triggers>=1 and #triggers<=4,'a keybind needs one to four triggers')
+    local triggerLabels={}
+    if fields.TriggerLabels~=nil then
+        local labels=split(fields.TriggerLabels)
+        assert(#labels==#triggers,'TriggerLabels needs one label per trigger')
+        for n,label in ipairs(labels) do
+            assert(label~='' and #label<=16,'invalid TriggerLabels entry')
+            triggerLabels[triggers[n]]=label
+        end
+    end
     local optional=trim(fields.Optional)
     assert(optional=='' or optional=='0' or optional=='1','Optional must be 0 or 1')
     local control=trim(fields.DefaultControl)
@@ -53,7 +64,7 @@ function M.declare(fields)
     local scope=trim(fields.mcConflictScope)
     assert(scope=='' or (#scope<=64 and scope:match('^[%w_]+$')),'invalid mcConflictScope')
     -- The first declared trigger is the default.
-    return {triggers=triggers,defaultTrigger=triggers[1],optional=optional=='1',
+    return {triggers=triggers,defaultTrigger=triggers[1],triggerLabels=triggerLabels,optional=optional=='1',
         defaultControl=control~='' and control or nil,conflictScope=scope~='' and scope or nil}
 end
 
@@ -158,7 +169,9 @@ function M.build(row,setting,context)
     local hoverColor={R=0.95,G=0.63,B=0.08,A=0.22}
     local base={R=0.12,G=0.12,B=0.12}
     local function shade(alpha) return {R=base.R,G=base.G,B=base.B,A=alpha} end
-    local trigger=control(layout.mode,setting.defaultTrigger,modeDim)
+    -- What the Mode control shows for a trigger; the value keeps the trigger name.
+    local function triggerLabel(name) return setting.triggerLabels and setting.triggerLabels[name] or name end
+    local trigger=control(layout.mode,triggerLabel(setting.defaultTrigger),modeDim)
     need(line:AddChild(trigger.box),'keybind trigger')
     local gap=new('SizeBox');gap:SetWidthOverride(layout.gap);need(line:AddChild(gap),'keybind gap')
     local key=control(layout.key,'')
@@ -258,7 +271,7 @@ function M.build(row,setting,context)
         local fixed=#setting.triggers==1
         trigger.inner:SetVisibility(bound and 0 or 1)
         trigger.text:SetVisibility(bound and 0 or 1)
-        if bound then api.setText(trigger.text,mode) end
+        if bound then api.setText(trigger.text,triggerLabel(mode)) end
         trigger.text:SetRenderOpacity(fixed and 0.45 or 1)
         trigger.button:SetIsEnabled(bound~=nil and not fixed)
     end

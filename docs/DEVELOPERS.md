@@ -84,7 +84,9 @@ Optional=1
 ```
 
 The stored value is `none` or `<FKey>|<trigger>`: `K|Tap`, `LeftAlt|Hold`, or
-`1|Tap`. A bare default key takes the first listed trigger. `Optional=1` adds a
+`1|Tap`. A bare default key takes the first listed trigger. `TriggerLabels=Toggle|Hold`
+names what the Mode control shows for each listed trigger, in order; it is display only,
+so the stored value keeps `Tap` or `Hold`. `Optional=1` adds a
 clear button; `DefaultControl=IA_Name` displays the player's native keys while
 unbound. Your input code implements any inheritance and Tap/Hold timing.
 
