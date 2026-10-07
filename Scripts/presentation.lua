@@ -1037,7 +1037,14 @@ function M.install(choices,controls,pages,options)
             M.style(title,1,api)
             M.style(page.filterLabel,1,api)
             page.filterLabel.Slot:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
+            -- DMM's browser title is a filter button in a 590x40 box: the button's inset
+            -- and the centred label offset it from a page title. Sit it the same way.
+            local filterStyle=page.filterButton.WidgetStyle
+            filterStyle.NormalPadding={Left=0,Top=0,Right=0,Bottom=0}
+            filterStyle.PressedPadding={Left=0,Top=0,Right=0,Bottom=0}
+            page.filterLabel.Slot:SetVerticalAlignment(1)
             local header=assert(page.filterButton:GetParent(),'MCS mod-browser header')
+            header:SetWidthOverride(572);header:ClearHeightOverride()
             local list=assert(header:GetParent(),'MCS mod-browser page')
             local headerName=header:GetFullName()
             local children={}

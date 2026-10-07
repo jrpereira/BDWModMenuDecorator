@@ -144,6 +144,7 @@ local pages={build=function(tree,providers,status,a)
     local filterButton,filterLabel=a.button(tree,'Compatible Mods')
     local browserList=widget()
     local filterWrapper=widget();filterWrapper:SetContent(filterButton);browserList:AddChild(filterWrapper)
+    filterWrapper:SetWidthOverride(590);filterWrapper:SetHeightOverride(40)
     local parent=widget()
     local title=a.caption(tree,'Mod Settings');parent:AddChild(title)
     local divider=widget();parent:AddChild(divider)
@@ -235,6 +236,12 @@ assert(#page.browserList.children==2 and page.browserList.children[2]:GetContent
     'Mod-browser title must have a themed divider immediately beneath it')
 assert(page.filterLabel.Font.Size==page.controls.mcHeaderTitle.Font.Size and
     page.filterLabel.color==page.controls.mcHeaderTitle.color,'Compatible Mods must use the mod-title style')
+local filterWrapper,filterStyle=page.filterButton:GetParent(),page.filterButton.WidgetStyle
+assert(filterStyle.NormalPadding.Left==0 and filterStyle.NormalPadding.Top==0
+    and filterStyle.PressedPadding.Left==0 and filterStyle.PressedPadding.Top==0
+    and page.filterLabel.Slot.VerticalAlignment==1
+    and filterWrapper.WidthOverride==572 and filterWrapper.heightCleared and filterWrapper.HeightOverride==nil,
+    'The mod-browser title must sit like a page title: no button inset, top-aligned, divider width')
 assert(page.mcTestControlArea.children[1]==page.controls.mcHeaderHost
     and page.mcTestControlArea.children[2]==page.mcTestDivider
     and page.controls.mcHeaderHost.children[1]==page.modTitle
