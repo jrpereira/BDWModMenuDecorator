@@ -70,3 +70,49 @@ assert(heading.widget.rule2=='base' and heading.widget.rule3==controls.widget
     and controls.widget.rule2==heading.widget and controls.widget.rule3=='base')
 assert(current.empty.visibility==1)
 print('PASS compatible-only filtering keeps the ModCore headings visible and linked')
+
+-- With a parser, the ModCore heading is its own page: a Modules | Developer Tools tab
+-- picker, then a link to each module page under User Modules and Foundation Modules.
+local parsed={}
+local linked={
+    {id='Other',name='Other'},
+    {id='ModCoreControls',name='Controls'},
+    {id='ModCoreSettings',name='Visuals'},
+    {id='ModCoreTemplates.module.Preymonition',name='Preymonition',mcBrowserGroup='module'},
+}
+Groups.arrange(linked,function(manifest) parsed[#parsed+1]=manifest;return {{id='ModCore_Page'}} end)
+local page=linked[2]
+assert(page.id=='ModCore.browser.root' and page.name=='ModCore' and not page.noSettings
+    and not page.mcBrowserHeading and page.settingsCount==1 and page.mcManifest==parsed[1],
+    'the ModCore entry opens its own page')
+local manifest=parsed[1]
+local function at(text) return assert(manifest:find(text,1,true),text) end
+assert(at('PresetLabels=Modules|Developer Tools')<at('[Category.User Modules]')
+    and at('[Category.User Modules]')<at('mcLinkPage=ModCoreTemplates.module.Preymonition')
+    and at('mcLinkPage=ModCoreTemplates.module.Preymonition')<at('[Category.Foundation Modules]')
+    and at('[Category.Foundation Modules]')<at('Label=ModCore Controls')
+    and at('Label=ModCore Controls')<at('Label=ModCore Settings'),
+    'Modules lists user modules, then foundation modules, each linking to its page')
+local failures={}
+local fallback={{id='ModCoreControls',name='Controls'}}
+Groups.arrange(fallback,function() error('bad manifest') end,function(event) failures[#failures+1]=event end)
+assert(fallback[1].noSettings and fallback[1].mcBrowserHeading and failures[1]=='BROWSER_ROOT_FAILED',
+    'a page that cannot be built leaves the plain heading')
+print('PASS the ModCore heading opens a Modules and Developer Tools page')
+
+-- Through DMM's real parser the page parses, links resolve and it opens without a config file.
+local choicesPath=os.getenv('DMM_CHOICES_PATH')
+if not choicesPath then print('SKIP ModCore page parse: DMM_CHOICES_PATH is not set');return end
+local Choices=dofile(choicesPath)
+assert(require('navigation').install(Choices))
+local Presentation=require('presentation')
+local items=Presentation.parse(manifest,Choices.parse(manifest))
+local byId={};for _,item in ipairs(items) do byId[item.id]=item end
+assert(byId.ModCore_Page.mcNavigation and byId.ModCore_Page.mcHeader and byId.ModCore_Page.kind=='picker',
+    'the first row is the title-row tab picker')
+assert(byId.ModCore_Module_1.mcLinkPage=='ModCoreTemplates.module.Preymonition'
+    and byId.ModCore_Module_2.mcLinkPage=='ModCoreControls' and byId.ModCore_Module_3.mcLinkPage=='ModCoreSettings'
+    and byId.ModCore_DeveloperTools.mcReadOnly)
+local model=Choices.open({id='ModCore.browser.root',choices=items})
+assert(not model.error,model.error)
+print('PASS the ModCore page parses through DMM and opens without a config file')
