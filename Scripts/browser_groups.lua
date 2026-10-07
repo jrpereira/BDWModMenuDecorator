@@ -2,6 +2,9 @@
 local M = {}
 local ROOT_ID = 'ModCore.browser.root'
 
+local FOUNDATION = {'ModCoreControls', 'ModCoreSettings'}
+local FOUNDATION_NAMES = {ModCoreControls='ModCore Controls', ModCoreSettings='ModCore Settings'}
+
 local function heading(id, name, level, indent)
     return {id=id, name=name, author='ModCore', version='',
         description=name .. ' groups related ModCore pages.',
@@ -9,7 +12,67 @@ local function heading(id, name, level, indent)
         mcBrowserLevel=level, mcBrowserIndent=indent}
 end
 
-function M.arrange(providers)
+-- The ModCore page: a Modules tab linking to each module's page, and a Developer Tools tab.
+-- Every row is navigation, so the page owns no config file.
+function M.manifest(corePages, modules)
+    local lines = {}
+    local function block(section, fields)
+        lines[#lines + 1] = '[' .. section .. ']'
+        for _, field in ipairs(fields) do lines[#lines + 1] = field[1] .. '=' .. tostring(field[2]) end
+        lines[#lines + 1] = ''
+    end
+    local function label(text) return (tostring(text):gsub('[|;%c]', ' ')) end
+    block('Mod', {{'Id', ROOT_ID}, {'Name', 'ModCore'}})
+    block('Category.Pages', {{'mcHeading', 0}})
+    block('Setting.ModCore_Page', {{'Id', 'ModCore_Page'}, {'Label', 'Page'}, {'Group', 'Pages'},
+        {'Type', 'picker'}, {'Default', 0}, {'PresetValues', '0|1'}, {'PresetLabels', 'Modules|Developer Tools'},
+        {'mcNavigation', 1}, {'mcHeading', 'true'}})
+    local count = 0
+    local function section(group, list)
+        if #list == 0 then return end
+        block('Category.' .. group, {{'VisibleWhen', 'ModCore_Page'}, {'VisibleValues', 0}})
+        for _, entry in ipairs(list) do
+            count = count + 1
+            local id = 'ModCore_Module_' .. count
+            block('Setting.' .. id, {{'Id', id}, {'Label', label(entry.name)}, {'Group', group},
+                {'Type', 'picker'}, {'Default', 0}, {'PresetValues', '0|1'}, {'PresetLabels', 'Open|Open'},
+                {'mcNavigation', 1}, {'mcType', 'tab'}, {'mcLinkPage', entry.id}})
+        end
+    end
+    local user, foundation = {}, {}
+    for _, provider in ipairs(modules) do user[#user + 1] = {id=provider.id, name=provider.name} end
+    for _, id in ipairs(FOUNDATION) do
+        if corePages[id] then foundation[#foundation + 1] = {id=id, name=FOUNDATION_NAMES[id]} end
+    end
+    section('User Modules', user)
+    section('Foundation Modules', foundation)
+    block('Category.Developer Tools', {{'VisibleWhen', 'ModCore_Page'}, {'VisibleValues', 1}, {'mcHeading', 0}})
+    block('Setting.ModCore_DeveloperTools', {{'Id', 'ModCore_DeveloperTools'}, {'Label', 'Developer Tools'},
+        {'Group', 'Developer Tools'}, {'Type', 'picker'}, {'Default', 0}, {'PresetValues', '0|1'},
+        {'PresetLabels', 'Coming soon|Coming soon'}, {'mcReadOnly', 1}})
+    return table.concat(lines, '\n')
+end
+
+-- parse(manifest) (optional) turns the ModCore heading into its page; without it, or if the
+-- page cannot be built, the heading stays a plain group heading.
+local function root(corePages, modules, parse, report)
+    if parse then
+        local ok, result = pcall(function()
+            local manifest = M.manifest(corePages, modules)
+            local choices = parse(manifest)
+            return {id=ROOT_ID, name='ModCore', author='ModCore', version='',
+                description='ModCore modules and developer tools.',
+                authorURL='', modURL='', logoFile='', logoAsset='', testOnly=false,
+                choices=choices, settingsCount=#choices, choicesLoaded=true, deferred=false,
+                mcManifest=manifest, mcBrowserLevel=2, mcBrowserIndent=0}
+        end)
+        if ok then return result end
+        if report then report('BROWSER_ROOT_FAILED', result) end
+    end
+    return heading(ROOT_ID, 'ModCore', 2, 0)
+end
+
+function M.arrange(providers, parse, report)
     local corePages, modules, remaining = {}, {}, {}
     local first, seen = nil, {}
     for _, provider in ipairs(providers) do
@@ -28,7 +91,7 @@ function M.arrange(providers)
         end
     end
     if not first then return remaining end
-    local group = {heading(ROOT_ID, 'ModCore', 2, 0)}
+    local group = {root(corePages, modules, parse, report)}
     if next(corePages) then
         for _, id in ipairs({'ModCoreControls', 'ModCoreSettings'}) do
             local provider = corePages[id]
@@ -48,14 +111,15 @@ function M.arrange(providers)
     return providers
 end
 
--- report(event,detail) (optional) receives failures.
-function M.install(pages, report)
+-- report(event,detail) (optional) receives failures. parse(manifest) (optional) builds the
+-- ModCore page's settings.
+function M.install(pages, report, parse)
     if pages.mcBrowserGroupsVersion then return false end
     report = report or function() end
     assert(type(pages)=='table' and type(pages.build)=='function', 'DMM pages API unavailable')
     local build = pages.build
     pages.build = function(tree, providers, status, api)
-        M.arrange(providers)
+        M.arrange(providers, parse, report)
         local page = build(tree, providers, status, api)
         if type(page)=='table' and type(page.setFilter)=='function' then
             local setFilter = page.setFilter

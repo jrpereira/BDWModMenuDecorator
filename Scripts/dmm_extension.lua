@@ -66,7 +66,7 @@ extension={
         navigation.install(dmm.choices)
         mapped.install(dmm.choices,dmm.controls)
         presentation.install(dmm.choices,dmm.controls,dmm.pages,{keyColumn=keybind.layout})
-        browserGroups.install(dmm.pages,report)
+        browserGroups.install(dmm.pages,report,function(content) return dmm.choices.parse(content) end)
         config.install(dmm.choices)
         assert(ModRef and type(ModRef.GetSharedVariable)=='function','DMM shared variables unavailable')
         local function read(path)
