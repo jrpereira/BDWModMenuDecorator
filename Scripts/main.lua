@@ -1,7 +1,11 @@
 local VERSION='1.0.1'
+local source=debug.getinfo(1,'S').source:gsub('^@','')
+-- Files shared with other modules, unchanged, keep their own module names. Searched first,
+-- so a copy left in Scripts by an earlier release is never loaded instead.
+local scripts=source:match('^(.*)[/\\][^/\\]+$')
+if scripts then package.path=scripts..'/vendor/?.lua;'..package.path end
 local Bootstrap=require('dmm_bootstrap')
 -- The level comes from log_level.txt in the mod folder; WARN without it.
-local source=debug.getinfo(1,'S').source:gsub('^@','')
 local root=source:match('^(.*)[/\\]Scripts[/\\][^/\\]+$')
 local logger=require('mc_log').new({name='ModCoreSettings',path=root and root..'/log_level.txt'})
 local log=require('log_events').reporter(logger)

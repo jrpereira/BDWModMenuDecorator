@@ -1,4 +1,4 @@
-package.path='Scripts/?.lua;'..package.path
+package.path='Scripts/?.lua;Scripts/vendor/?.lua;'..package.path
 local Links=require('page_links')
 
 local function setup(dirty)

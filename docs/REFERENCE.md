@@ -15,9 +15,9 @@ means an INI string; replace example paths with absolute paths on the game host.
 
 ModCoreSettings is the only DMM integration. Other mods never install a DMM
 extension or call DMM directly; to add generated menu pages they publish data
-through `Scripts/menu_contributions.lua`. A provider is the mod/page that owns
-a settings model. Vendor that file unchanged and publish
-from the ordinary mod state:
+through `Scripts/vendor/menu_contributions.lua`. A provider is the mod/page that owns
+a settings model. Copy that file unchanged into your mod's `Scripts/vendor` folder,
+add the folder to `package.path`, and publish from the ordinary mod state:
 
 ```lua
 local Menu=require('menu_contributions')
@@ -201,8 +201,9 @@ sets the row label in small (12pt) muted text, which suits a notice.
 
 ## Apply notifications
 
-`Scripts/settings_api.lua` is ModCoreSettings's versioned, game-agnostic consumer API. A mod
-may vendor that file unchanged and subscribe to its own DMM provider ID:
+`Scripts/vendor/settings_api.lua` is ModCoreSettings's versioned, game-agnostic consumer API.
+A mod may copy that file unchanged into its own `Scripts/vendor` folder and subscribe to its
+own DMM provider ID:
 
 ```lua
 local Settings=require('settings_api')

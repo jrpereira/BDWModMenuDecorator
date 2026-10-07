@@ -16,7 +16,7 @@ end
 -- Events are written at their level; log_level.txt in the mod folder sets it (WARN without it).
 local report=(function()
     local root=directory:match('^(.*)[/\\]Scripts[/\\]$')
-    local logger=module('mc_log').new({name='ModCoreSettings',path=root and root..'/log_level.txt'})
+    local logger=module('vendor/mc_log').new({name='ModCoreSettings',path=root and root..'/log_level.txt'})
     return module('log_events').reporter(logger)
 end)()
 
@@ -47,7 +47,7 @@ extension={
         local browserGroups=module('browser_groups')
         local config=module('init_config')
         local lifecycle=module('dmm_lifecycle')
-        local contributions=module('menu_contributions')
+        local contributions=module('vendor/menu_contributions')
         local menuPages=module('menu_pages')
         local pageLinks=module('page_links')
         local menuSlots=module('menu_slots')

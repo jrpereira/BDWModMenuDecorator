@@ -1,4 +1,4 @@
-package.path='Scripts/?.lua;'..package.path
+package.path='Scripts/?.lua;Scripts/vendor/?.lua;'..package.path
 local M=require('mapped_presets')
 local choices={}
 function choices.index(s,v)

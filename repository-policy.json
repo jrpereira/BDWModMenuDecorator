@@ -1,3 +1,8 @@
 {
-  "allowed_paths": []
+  "allowed_paths": [],
+  "vendored": {
+    "Scripts/vendor/mc_log.lua": "ModCoreSettings",
+    "Scripts/vendor/menu_contributions.lua": "ModCoreSettings",
+    "Scripts/vendor/settings_api.lua": "ModCoreSettings"
+  }
 }

@@ -1,4 +1,4 @@
-package.path='Scripts/?.lua;'..package.path
+package.path='Scripts/?.lua;Scripts/vendor/?.lua;'..package.path
 local Log=require('mc_log')
 local dir=(os.getenv('TMPDIR') or '.'):gsub('/+$','')
 local path=dir..'/mc_log_level_'..os.time()..'_'..math.random(1000000000)..'.txt'

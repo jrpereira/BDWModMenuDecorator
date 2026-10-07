@@ -1,4 +1,4 @@
-package.path='Scripts/?.lua;'..package.path
+package.path='Scripts/?.lua;Scripts/vendor/?.lua;'..package.path
 local Menu=require('menu_contributions')
 local Pages=require('menu_pages')
 local Groups=require('browser_groups')

@@ -9,7 +9,7 @@ debug.getinfo=function() return {source='@C:/Mods/1_ModCore_Settings/Scripts/dmm
 loadfile=function(path)
     local name=assert(path:match('([^/\\]+)%.lua$'))
     -- Logging is real: it is loaded from the extension's folder before any module.
-    if name=='mc_log' or name=='log_events' then return originalLoadfile('Scripts/'..name..'.lua') end
+    if name=='mc_log' or name=='log_events' then return originalLoadfile(assert(path:match('Scripts/.+$'))) end
     loaded[#loaded+1]=path
     return function()
         if name=='menu_pages' then
@@ -54,6 +54,10 @@ local order={'mcs_manifest','navigation','mapped_presets','presentation','browse
  'menu_contributions','menu_pages','page_links','menu_slots','page_hooks','field_types','keybind_editor','standard_controls'}
 assert(#loaded==#order)
 for n,name in ipairs(order) do assert(loaded[n]:match(name..'%.lua$'),'load '..n) end
+-- Copied files load from Scripts/vendor; the extension's own modules from Scripts.
+for n,name in ipairs(order) do
+    assert((loaded[n]:find('/Scripts/vendor/',1,true)~=nil)==(name=='menu_contributions'),'folder of '..name)
+end
 -- Field types install innermost, before any other wrapper.
 assert(fieldTypes.order==0 and fieldTypes.registered.keybind and fieldTypes.modules.choices==choices
  and fieldTypes.modules.controls==controls and fieldTypes.modules.settingsApi==settingsApi

@@ -1,4 +1,4 @@
-package.path='Scripts/?.lua;'..package.path
+package.path='Scripts/?.lua;Scripts/vendor/?.lua;'..package.path
 local classes={}
 local function class(name) classes[name]=classes[name] or {name=name,IsValid=function() return true end};return classes[name] end
 local count=0

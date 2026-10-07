@@ -1,4 +1,4 @@
-package.path='Scripts/?.lua;'..package.path
+package.path='Scripts/?.lua;Scripts/vendor/?.lua;'..package.path
 local shared,handler={},nil
 ModRef={
  GetSharedVariable=function(_,key) return shared[key] end,

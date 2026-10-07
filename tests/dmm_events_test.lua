@@ -1,4 +1,4 @@
-package.path='Scripts/?.lua;'..package.path
+package.path='Scripts/?.lua;Scripts/vendor/?.lua;'..package.path
 local Events=require('dmm_events')
 local reports={}
 local function report(event,detail) reports[#reports+1]=event..':'..tostring(detail) end

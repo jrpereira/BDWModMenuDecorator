@@ -45,7 +45,7 @@ class PackageTests(unittest.TestCase):
                 self.assertFalse(any('/dlls/' in n or n.lower().endswith('.dll') for n in names))
                 self.assertIn('1_ModCore_Settings/Scripts/dirty_labels.lua', names)
                 self.assertIn('1_ModCore_Settings/Scripts/init_config.lua', names)
-                self.assertIn('1_ModCore_Settings/Scripts/settings_api.lua', names)
+                self.assertIn('1_ModCore_Settings/Scripts/vendor/settings_api.lua', names)
                 self.assertFalse(any(n.endswith('/config.ini') or n.endswith('.dmp') or '/tests/' in n for n in names))
                 if pack.MODULE == 'QuickslotsForever':
                     self.assertEqual(bundle.read(pack.MODULE + '/config.example.ini'), (root / 'distribution/config.ini').read_bytes())

@@ -1,4 +1,4 @@
-package.path='Scripts/?.lua;'..package.path
+package.path='Scripts/?.lua;Scripts/vendor/?.lua;'..package.path
 -- Dirty labels are the work that keeps a page's updates scheduled.
 local binds,refreshes,usable=0,0,1
 local bound

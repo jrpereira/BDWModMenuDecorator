@@ -45,10 +45,13 @@ can run before the player opens this page.
 
 ## React to Apply
 
-Copy `Scripts/settings_api.lua` unchanged into your mod's `Scripts` folder.
-In `Scripts/main.lua`, subscribe to your provider ID:
+Copy `Scripts/vendor/settings_api.lua` unchanged into your mod's `Scripts/vendor`
+folder. In `Scripts/main.lua`, add that folder to the search path and subscribe to
+your provider ID:
 
 ```lua
+local scripts = debug.getinfo(1, 'S').source:gsub('^@', ''):match('^(.*)[/\\]')
+package.path = package.path .. ';' .. scripts .. '/vendor/?.lua'
 local Settings = require('settings_api')
 local scale = 100 -- replace with your saved config value at startup
 local unsubscribe = Settings.subscribe('ExampleMod', function(event)
