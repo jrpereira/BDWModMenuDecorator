@@ -153,7 +153,7 @@ end
 
 -- A reader for a mod folder's mod.json fields under mods (the Mods folder, ending in a
 -- separator): group, its browser group; settings, false when the mod has none to show; and
--- name, author, version and description, read before any dependencies list.
+-- name, author, version, icon and description, read before any dependencies list.
 -- open defaults to io.open.
 function M.folderManifest(mods, open)
     if type(mods) ~= 'string' then return nil end
@@ -171,7 +171,7 @@ function M.folderManifest(mods, open)
             return value and #value <= limit and value or nil
         end
         local fields = {group=text('group', 64), name=text('name', 200), author=text('author', 120),
-            version=text('version', 64), description=text('description', 4096)}
+            version=text('version', 64), icon=text('icon', 16), description=text('description', 4096)}
         if json:match('"settings"%s*:%s*false') then fields.settings = false end
         return fields
     end
@@ -206,6 +206,15 @@ local function folderOf(provider)
     if provider.detectedKind == 'ue4ss' then return provider.name end
     local path = type(provider.path) == 'string' and provider.path:gsub('\\', '/') or nil
     return path and path:match('([^/]+)/[^/]+$')
+end
+
+-- Whether a folder (named <prefix><id>) holds a foundation module.
+local function foundationFolder(folder)
+    if type(folder) ~= 'string' then return false end
+    for _, entry in ipairs(FOUNDATION) do
+        if folder:lower():sub(-#entry.id) == entry.id:lower() then return true end
+    end
+    return false
 end
 
 -- Every page is listed in a group: ModCore first, then each group of several mods (its
@@ -248,9 +257,10 @@ function M.arrange(providers, parse, report, options)
                 provider.mcListGroup = trimmed(fields.group) or false
                 -- A mod that declares it has no settings is not listed as incompatible.
                 provider.mcNoSettingsDeclared = fields.settings == false and provider.noSettings or nil
-                -- A mod found on disk takes its details from its folder: its mod.json, else a
-                -- foundation module's name and the folder's version.
-                if provider.detectedKind and folder then
+                -- A mod found on disk, or a contributed page standing in for one, takes its
+                -- details from its folder: its mod.json, else a foundation module's name and
+                -- the folder's version.
+                if (provider.detectedKind or provider.mcModuleEntry) and folder then
                     provider.mcFolder = provider.mcFolder or folder
                     local version
                     if options.folderVersion then
@@ -260,6 +270,7 @@ function M.arrange(providers, parse, report, options)
                     provider.name = fields.name or foundationName or provider.name
                     provider.author = fields.author or provider.author
                     provider.version = fields.version or version or provider.version
+                    provider.mcBrowserIcon = fields.icon or provider.mcBrowserIcon
                     if provider.mcNoSettingsDeclared then
                         provider.description = (fields.description and fields.description .. '\n\n' or '')
                             .. provider.name .. ' has no settings to change.'
@@ -268,6 +279,12 @@ function M.arrange(providers, parse, report, options)
             end
             local foundation = core[id]
             local group = provider.mcBrowserGroup
+            -- A mod whose mod.json puts it in the ModCore group is a ModCore module, unless
+            -- it is a foundation module.
+            if group == nil and provider.mcListGroup == 'ModCore'
+                and (provider.detectedKind or provider.mcModuleEntry) and not foundationFolder(folderOf(provider)) then
+                group = 'module'
+            end
             local child = not foundation and group == nil and provider.mcBrowserChild
                 and contributions[provider.mcContribution]
             if foundation and provider.mcContribution then contributions[provider.mcContribution] = true end

@@ -47,7 +47,7 @@ assert(#built==2 and built[1].name=='ModCore' and built[2].name=='Visuals')
 -- A mod folder's mod.json gives its group and whether it has settings; a detected folder of
 -- a foundation module is ModCore's and has none.
 local manifests={['Mods/Grouped/mod.json']='{"id":"G","name":"Grouped Mod","author":"Ann","version":"2.0",'
-        ..'"group":"ModCore","dependencies":[{"id":"X","name":"Dependency","version":"9"}]}',
+        ..'"group":"ModCore","icon":"⟴","dependencies":[{"id":"X","name":"Dependency","version":"9"}]}',
     ['Mods/Quiet/mod.json']='{"id":"Q","settings": false}'}
 local function openManifest(path)
     local content=manifests[path]
@@ -77,6 +77,23 @@ assert(byId['detected:grouped'].mcBrowserLine=='cell' and byId.Page.mcBrowserLin
     and byId['detected:grouped'].version=='2.0' and byId.Page.name=='Page'
     and byId['detected:quiet'].mcBrowserLine=='row' and byId['detected:quiet'].mcNoSettingsDeclared
     and not byId['detected:grouped'].mcNoSettingsDeclared,'mod.json groups and settings apply')
+assert(folderManifest('Grouped').icon=='⟴' and byId['detected:grouped'].mcBrowserIcon=='⟴','mod.json gives the icon')
+
+-- A contributed page standing in for a mod takes that mod's identity from its folder, and a
+-- mod in the ModCore group is a ModCore module whoever contributed its page.
+local entry={id='MCT.module.Grouped',name='Grouped',author='ModCoreTemplates',version='9.9',mcContribution='MCT',
+    mcFolder='Grouped',mcModuleEntry=true,choices={{id='x'}}}
+local child={id='MCT.extra',name='Extra',author='ModCoreTemplates',mcContribution='MCT',mcFolder='Quiet',
+    choices={{id='y'}}}
+local entries={entry,child,{id='ModCoreControls',name='Controls'}}
+local rootManifest
+Groups.arrange(entries,function(content) rootManifest=rootManifest or content;return {{id='Row'}} end,nil,
+    {folderManifest=folderManifest})
+assert(entry.name=='Grouped Mod' and entry.author=='Ann' and entry.version=='2.0' and entry.mcBrowserIcon=='⟴',
+    'a module entry takes its folder identity')
+assert(child.name=='Extra' and child.author=='ModCoreTemplates','a page that does not stand in for a mod keeps its own')
+assert(rootManifest and rootManifest:find('Grouped Mod',1,true) and not rootManifest:find('Extra',1,true),
+    'a ModCore-group mod is listed on the Modules tab')
 
 print('PASS ModCore browser groups Controls, Visuals and module pages')
 

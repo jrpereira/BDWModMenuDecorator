@@ -54,12 +54,15 @@ function M.reader(Contributions,shared,read,report)
     end
 end
 
-local function generated(contribution,page,parse,hooked)
+local function generated(contribution,page,parse,hooked,compile)
     local choices={}
     local manifest,hooks,context=page.manifest,nil,nil
     if page.hooks then
         assert(hooked,'page hooks unavailable')
         hooks,manifest,context=hooked(page)
+    elseif page.menu then
+        assert(compile,'menu data unavailable')
+        manifest=compile(page.menu,page)
     end
     if manifest then choices=parse(manifest) end
     local provider={id=page.id,name=page.name,author=page.author or contribution.id,
@@ -107,7 +110,8 @@ end
 -- parses addresses and checks slot declarations; without it rows are ignored and link pages hidden.
 -- A hidden page whose rows have no available slot is shown instead, so its settings stay reachable.
 -- hooked(page) (optional) returns a hooks page's hooks, manifest text and context.
-function M.apply(providers,contributions,parse,state,report,slots,hooked)
+-- compile(menu,page) (optional) turns a page's menu data into manifest text.
+function M.apply(providers,contributions,parse,state,report,slots,hooked,compile)
     local address=slots and slots.address
     for index=#providers,1,-1 do
         if providers[index].mcContribution then table.remove(providers,index) end
@@ -132,7 +136,7 @@ function M.apply(providers,contributions,parse,state,report,slots,hooked)
                 assert(not ids[page.id],'page id '..page.id..' is already in the menu')
                 local parent=page.under and built[page.under]
                 if shown[page.id] and (not page.under or parent) then
-                    built[page.id]={provider=generated(contribution,page,parse,hooked),page=page}
+                    built[page.id]={provider=generated(contribution,page,parse,hooked,compile),page=page}
                 end
             end
             -- Validate all attachments before changing the list; a contributor is all or nothing.
@@ -163,8 +167,11 @@ function M.apply(providers,contributions,parse,state,report,slots,hooked)
                         local ancestor=page.under
                         while ancestor do tails[ancestor]=provider;ancestor=built[ancestor].page.under end
                     elseif match and match.noSettings and match.detectedKind then
+                        -- The page becomes that mod's entry; the browser names it from the
+                        -- mod's folder, as it would the placeholder.
                         table.remove(providers,indexOf(providers,match))
                         hidden[#hidden+1]=match
+                        provider.mcModuleEntry=true
                         insertSorted(providers,provider)
                     elseif match and page.group==nil then
                         local tail=tails[match] or match
@@ -182,7 +189,8 @@ function M.apply(providers,contributions,parse,state,report,slots,hooked)
                 local source
                 for _,page in ipairs(contribution.pages) do
                     if page.id==row.page then
-                        source=built[page.id] and built[page.id].provider or generated(contribution,page,parse,hooked)
+                        source=built[page.id] and built[page.id].provider
+                            or generated(contribution,page,parse,hooked,compile)
                     end
                 end
                 local target,slot=address(row.slot)
@@ -224,8 +232,8 @@ function M.apply(providers,contributions,parse,state,report,slots,hooked)
 end
 
 -- slots (optional): the menu_slots controller; read loads a disk manifest for splicing.
--- hooked (optional): see M.apply.
-function M.install(pages,parse,contributions,report,slots,read,hooked)
+-- hooked and compile (optional): see M.apply.
+function M.install(pages,parse,contributions,report,slots,read,hooked,compile)
     assert(type(pages)=='table' and type(pages.build)=='function','DMM pages API unavailable')
     if pages.mcMenuPagesVersion then return false end
     local state,build,reported={}, pages.build, {}
@@ -238,7 +246,7 @@ function M.install(pages,parse,contributions,report,slots,read,hooked)
         -- Contributions must never take the menu down with them.
         local ok,list=pcall(contributions)
         if not ok then once('CONTRIBUTIONS_UNAVAILABLE',tostring(list));list={} end
-        M.apply(providers,list,parse,state,once,slots,hooked)
+        M.apply(providers,list,parse,state,once,slots,hooked,compile)
         -- Every contributed page's version by id, hidden pages included, for the ModCore page.
         local versions={}
         for _,contribution in ipairs(list) do

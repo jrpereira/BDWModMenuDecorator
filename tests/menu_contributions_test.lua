@@ -64,8 +64,8 @@ local function row(fields)
     for key,value in pairs(fields) do out[key]=value end
     return {pages=pages,rows={out}}
 end
-fails('page must name a page with a manifest','MCT',row({page='MCT'}))
-fails('page must name a page with a manifest','MCT',row({page='Other'}))
+fails('page must name a page with settings','MCT',row({page='MCT'}))
+fails('page must name a page with settings','MCT',row({page='Other'}))
 fails('slot must belong to another provider','MCT',row({slot='MCT.vehicles:x'}))
 fails('invalid row 1 slot address','MCT',row({slot='controls:a-b'}))
 fails('invalid row 1 slot address','MCT',row({slot='visuals'}))
@@ -158,6 +158,46 @@ other:publish({pages={{id='MCC',name='Controls'}}})
 assert(host.values[Menu.index]==Menu.hex('MCT')..' '..Menu.hex('MCC'))
 assert(not pcall(Menu.publisher,host,{id='MCT',directory='relative'}))
 print('PASS menu contribution client validates, round-trips and publishes generations')
+
+-- Menu data travels in its own file, read back without globals, under contract 4.
+local menu={storage={file='config.ini',section='S'},groups={{id='G',label='A "quoted"\\label'}},
+    fields={{id='F',group='G',label='F',default=0.5,range={min=0,max=1}},
+        {id='T',group='G',label='T',default=0,choices={{value=0,label='No'},{value=1,label='Yes'}},tabs=true}},
+    [7]='sparse',[-1]=false}
+local menuPages={{id='MCT',name='Templates',attach='3_ModCore_Templates',menu=menu,configDirectory='/mods/MCT'},
+    {id='MCT.raw',name='Raw',under='MCT',manifest=manifest,configDirectory='/mods/MCT'}}
+assert(Menu.validate('MCT',{pages=menuPages}))
+assert(Menu.contractFor({pages=menuPages})==Menu.menuContract)
+descriptor,written=Menu.encode('MCT',9,{pages=menuPages})
+assert(descriptor:find('contract=4',1,true) and descriptor:find('menuFile=mcs_menu.9.1.lua',1,true))
+assert(written[1].name=='mcs_menu.9.1.lua' and written[2].name=='mcs_menu.9.2.ini')
+byName={}
+for _,file in ipairs(written) do byName[file.name]=file.content end
+decoded=Menu.decode(descriptor,function(name) return assert(byName[name]) end)
+local back=decoded.pages[1].menu
+assert(back.groups[1].label=='A "quoted"\\label' and back.fields[1].default==0.5 and back.fields[2].tabs==true
+    and back.fields[2].choices[2].label=='Yes' and back[7]=='sparse' and back[-1]==false
+    and decoded.pages[1].menuFile==nil and decoded.pages[2].manifest==manifest,'menu data round-trips')
+assert(not pcall(Menu.decode,descriptor:gsub('contract=4','contract=3'),function(name) return byName[name] end))
+local sandboxed=Menu.deserialize('{x=os,y=print}')
+assert(sandboxed.x==nil and sandboxed.y==nil,'menu data sees no globals')
+assert(not pcall(Menu.deserialize,'return 1'),'menu data is a table constructor')
+fails('menu must be a table','MCT',{pages={{id='MCT',name='a',menu='x',configDirectory='/x'}}})
+fails('a menu page cannot have a manifest','MCT',{pages={{id='MCT',name='a',menu={},manifest=manifest,
+    configDirectory='/x'}}})
+fails('configDirectory','MCT',{pages={{id='MCT',name='a',menu={}}}})
+assert(Menu.validate('MCT',{pages=menuPages,rows={{page='MCT',slot='controls:visuals',settings={'F'}}}}),
+    'a menu page can source slot rows')
+assert(not pcall(Menu.serialize,{f=function() end}),'menu data holds only plain values')
+assert(not pcall(Menu.serialize,{0/0}),'menu numbers are finite')
+-- Cleanup removes menu files beside manifests.
+local menuHost=shared()
+local menuStore,menuWrite,menuRemove=files()
+local menuPublisher=Menu.publisher(menuHost,{id='MCT',directory='/m',write=menuWrite,remove=menuRemove})
+for _=1,3 do menuPublisher:publish({pages=menuPages}) end
+assert(menuStore['/m/mcs_menu.1.1.lua']==nil and menuStore['/m/mcs_menu.1.2.ini']==nil
+    and menuStore['/m/mcs_menu.3.1.lua'] and menuStore['/m/mcs_menu.3.2.ini'],'older menu files are removed')
+print('PASS menu data pages round-trip under contract 4')
 
 -- textTable decodes an mcTable row as ModCoreSettings does, for offline checks.
 local entries,columns=Menu.textTable(' 2190 : ← | U+25CF:● |a:b:c')

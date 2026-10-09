@@ -57,6 +57,21 @@ assert(byId['MCT.z'].path=='/mct/cache/mod_settings.ini' and byId['MCT.z'].setti
 assert(byId['MCT.z'].author=='MCT' and byId['MCT.z'].version=='')
 assert(byId['MCT.z'].mcManifest==manifest and byId['MCT'].mcManifest==nil,'pages carry their manifest in memory')
 assert(#logs==0,logs[1])
+-- A page replacing a placeholder becomes that mod's entry; one following a mod does not.
+assert(byId['MCT.module.Beta'].mcModuleEntry and not byId['MCT.module.Gamma'].mcModuleEntry
+    and byId['MCT'].mcModuleEntry,'pages standing in for a mod are marked')
+-- Menu data pages are compiled by ModCoreSettings; without a compiler the contributor is skipped.
+local compiled={}
+local function compile(menu,page) compiled[#compiled+1]=page.id;return '[Setting.'..menu.fields[1].id..']\n' end
+local menuProviders={mod('Alpha')}
+Pages.apply(menuProviders,{{id='MD',pages={{id='MD',name='Menu data',attach='Alpha',
+    menu={fields={{id='Size'}}},configDirectory='/md'}}}},parse,{},report,nil,nil,compile)
+assert(compiled[1]=='MD' and menuProviders[2].id=='MD' and menuProviders[2].settingsCount==1
+    and menuProviders[2].mcManifest=='[Setting.Size]\n','menu data compiles into the page manifest')
+Pages.apply({mod('Alpha')},{{id='MD',pages={{id='MD',name='Menu data',menu={fields={}},configDirectory='/md'}}}},
+    parse,{},report)
+assert(logs[#logs]:find('menu data unavailable',1,true),logs[#logs])
+logs={}
 -- A tool page never follows the mod it attaches to; ModCore grouping places it.
 local toolProviders={mod('Alpha'),mod('Zeta')}
 Pages.apply(toolProviders,{{id='MCD',pages={{id='MCD.sounds',name='Sounds Explorer',attach='Alpha',group='tool',

@@ -39,6 +39,7 @@ mcOrders=0:10;1:20
 mcParent=Interaction: Selective
 mcParentLevel=2
 mcLevel=3
+mcLabel=Key Bindings
 [Setting.Enabled]
 Id=Enabled
 mcHeading=true
@@ -69,6 +70,7 @@ assert(not pcall(M.parse,schema:gsub('mcHeading=0','mcHeading=invalid'),items))
 assert(not pcall(M.parse,schema:gsub('mcLabelWhen=Primary','mcLabelWhen=Missing'),items))
 local parentItems={{id='One',kind='toggle',group='One',values={0,1}},{id='Two',kind='toggle',group='Two',values={0,1}}}
 assert(not pcall(M.parse,'[Category.One]\nmcParent=\n',parentItems))
+assert(not pcall(M.parse,'[Category.One]\nmcLabel= \n',parentItems),'mcLabel needs text')
 assert(not pcall(M.parse,'[Category.One]\nmcParentLevel=2\n',parentItems))
 assert(not pcall(M.parse,'[Category.One]\nmcParent=Shared\nmcParentLevel=2\n[Category.Two]\nmcParent=Shared\nmcParentLevel=3\n',parentItems))
 M.parse(schema,items)
@@ -491,6 +493,7 @@ local function textCount(text)
     local count=0;for _,child in ipairs(scroll.children) do if child.text==text then count=count+1 end end;return count
 end
 assert(textCount('Interaction: Independent')==1 and textCount('Interaction: Selective')==1,'Each parent heading renders once')
+assert(textCount('Key Bindings')>=1 and textCount('Keys')==0,'mcLabel names the heading in place of its category')
 local independent
 for _,child in ipairs(scroll.children) do if child.text=='Interaction: Independent' then independent=child end end
 assert(position(independent)<position(ui.panels[1].headings[3].widget),'Parent must precede its subgroup headings')
@@ -539,16 +542,6 @@ local pickerHeaderSchema=schema:gsub('Id=Primary\nmcType=tab\nmcLevel=2',
     'Id=Primary\nmcType=tab\nmcHeading=true'):gsub('Id=Enabled\nmcHeading=true',
     'Id=Enabled\nmcLevel=2')
 M.parse(pickerHeaderSchema,items)
-local templatePage=controls.build(widget(),{{id='ModCoreTemplates',choices=items}},api)
-templatePage.mcHeaderHost=page.controls.mcHeaderHost
-templatePage.mcHeaderTitle=page.modTitle
-templatePage:show(1)
-assert(not templatePage.panels[1].rows[1].mcHeader
-    and templatePage.panels[1].rows[1].wrapper:GetParent()==templatePage.panels[1].scroll
-    and templatePage.panels[1].rows[1].mcLabel.visible~=1
-    and templatePage.panels[1].rows[1].mcLabel.Font.Size==22
-    and templatePage.panels[1].rows[1].mcLabel.Slot.Padding.Left==0,
-    'Template page must keep its level-one picker in an unindented row')
 local pickerHeader=controls.build(widget(),{{id='ModCoreControls',choices=items}},api)
 pickerHeader.mcHeaderHost=page.controls.mcHeaderHost
 pickerHeader.mcHeaderTitle=page.modTitle

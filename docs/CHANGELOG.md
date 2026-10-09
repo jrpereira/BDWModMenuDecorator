@@ -2,6 +2,19 @@
 
 ## v1.0.2
 
+- Contributed pages can describe their settings as `menu` data (groups, fields with
+  choices or a range, visibility and label rules, storage) instead of a DMM
+  manifest; ModCoreSettings builds the page. Descriptor contract 4, client
+  version 6. Page hooks may return `menu(context)` in place of `manifest(context)`,
+  and get `context.moduleName(folder)`.
+- A contributed page that takes the place of a mod's entry shows that mod's name,
+  author, version and icon from its `mod.json`. A mod whose `mod.json` puts it in
+  the `ModCore` group is listed on the Modules tab without declaring
+  `group='module'`. `mod.json` `icon` is shown for detected mods too.
+- `mcLabel=<text>` names a category heading in place of its category name.
+- A level-one setting takes the page title row on every page, and never shows a
+  dirty star there; ModCoreSettings no longer treats ModCore Templates pages
+  differently.
 - Module browsing uses Gameplay, Content, Presentation, Technical & Support and
   Other sections, with up to three declared categories, separate tags and inferred
   parents. The MCS-owned file index replaces category shared variables; legacy

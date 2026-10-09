@@ -69,7 +69,7 @@ local settingsApi={}
 extension.install({version=1,choices=choices,controls=controls,pages=pages,events=events,settingsApi=settingsApi})
 local order={'mcs_manifest','navigation','mapped_presets','menu_contributions','presentation','browser_groups','module_categories','mcs_taxonomy','mcs_taxonomy_data','mcs_module_json',
  'init_config','dmm_lifecycle','menu_pages','page_links','menu_slots','page_hooks','field_types','keybind_editor','standard_controls',
- 'error_log'}
+ 'error_log','menu_data'}
 assert(#loaded==#order)
 for n,name in ipairs(order) do assert(loaded[n]:match(name..'%.lua$'),'load '..n) end
 -- Copied files load from Scripts/vendor; the extension's own modules from Scripts.

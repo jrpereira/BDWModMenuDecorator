@@ -84,8 +84,9 @@ extension={
             textSources={errors=ue4ss and errorLog.reader(ue4ss..'UE4SS.log') or nil},textFormat=errorLog.text,
             textTable=contributions.textTable,playerExists=playerExists})
         local mods=directory:match('^(.*[/\\])[^/\\]+[/\\]Scripts[/\\]$')
+        local folderManifest=browserGroups.folderManifest(mods)
         browserGroups.install(dmm.pages,report,function(content) return dmm.choices.parse(content) end,
-            browserGroups.folderVersion(mods),browserGroups.folderManifest(mods),
+            browserGroups.folderVersion(mods),folderManifest,
             moduleCategories.reader(directory..'../cache/modules_register.json',directory..'../config.ini',nil,
                 {taxonomy=taxonomy,json=indexJson,report=report}))
         config.install(dmm.choices)
@@ -99,16 +100,26 @@ extension={
         -- Hooks storage sits inside the slot model, which must stay outermost.
         pageHooks.install(dmm.choices,report)
         local loadHooks=pageHooks.loader()
+        -- A mod folder's name as the browser shows it: its mod.json name, else the folder.
+        local function moduleName(folder)
+            local ok,fields=pcall(folderManifest or error,folder)
+            return ok and type(fields)=='table' and fields.name or folder
+        end
+        local menuData=module('menu_data')
+        local function compile(menu)
+            return menuData.manifest(menu,{moduleName=moduleName})
+        end
         local function hooked(page)
             local hooks=loadHooks(page.hooks)
             local context=pageHooks.context(page)
-            return hooks,pageHooks.manifest(hooks,context),context
+            context.moduleName=moduleName
+            return hooks,pageHooks.manifest(hooks,context,compile),context
         end
         -- Outermost open: inner wrappers only ever see the host's own unspliced settings.
         local slots=menuSlots.install(dmm.choices,report,contributions,read)
         -- Wrapped after browser groups so contributed pages exist before ModCore grouping runs.
         menuPages.install(dmm.pages,function(content) return dmm.choices.parse(content) end,
-            menuPages.reader(contributions,ModRef,read,report),report,slots,read,hooked)
+            menuPages.reader(contributions,ModRef,read,report),report,slots,read,hooked,compile)
         pageLinks.install(dmm.pages,slots)
         local publisher=lifecycle.publisher(report)
         for _,name in ipairs({'providerPrepared','providerRefreshed','hostClosing'}) do

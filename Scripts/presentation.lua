@@ -127,7 +127,10 @@ function M.parse(content,items)
                 if parent then assert(parent.font==font,'categories sharing mcParent must use the same mcParentLevel')
                 else parent={key=label,label=label,font=font};parents[label]=parent end
             elseif r.mcParentLevel~=nil then error('mcParentLevel requires mcParent') end
-            groups[group]={font=level(r.mcLevel),help=r.mcHelp,labelRule=labelRule(r),order=order,parent=parent,
+            -- mcLabel=<text> is the heading's text in place of the category name.
+            local label=r.mcLabel~=nil and trim(r.mcLabel) or nil
+            assert(label~='','mcLabel requires a non-empty label')
+            groups[group]={font=level(r.mcLevel),help=r.mcHelp,labelRule=labelRule(r),label=label,order=order,parent=parent,
                 heading=flag(r.mcHeading,'mcHeading')~=false,playerExists=playerRule(r.mcPlayerExists),
                 silent=flag(r.mcSilent,'mcSilent')}
         end
@@ -489,7 +492,7 @@ function M.install(choices,controls,pages,options)
                     local padding=slot.Padding
                     slot:SetPadding({Left=0,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom})
                 end
-                if setting.mcHeader and ui.mcHeaderHost and providers[index].id~="ModCoreTemplates" then
+                if setting.mcHeader and ui.mcHeaderHost then
                     assert(not panel.mcHeader,'only one level-one setting per provider')
                     local placeholder=new('SizeBox')
                     local path=assert(row.wrapper:GetFullName():match('^%S+ (.+)$'))
@@ -977,8 +980,8 @@ function M.install(choices,controls,pages,options)
                 if heading.visible~=headingShown then
                     heading.widget:SetVisibility(headingShown and 0 or 1);heading.visible=headingShown
                 end
-                if group and group.labelRule then
-                    local text=dynamic(group.labelRule,self.model,setting.group)
+                if group and (group.labelRule or group.label) then
+                    local text=dynamic(group.labelRule,self.model,group.label or setting.group)
                     if heading.mcText~=text then api.setText(heading.widget,text);heading.mcText=text end
                 end
                 local help=helpWidgets[heading.widget]

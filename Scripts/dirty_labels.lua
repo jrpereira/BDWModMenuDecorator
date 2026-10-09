@@ -155,9 +155,8 @@ function M.new(log)
         protected(function()
             for _,row in ipairs(rows) do
                 local shell=row.overlay or row.shell
-                if not (row.dmmSetting and row.dmmSetting.mcHeader
-                    and type(row.providerId)=='string'
-                    and row.providerId:match('^ModCoreTemplates%.module%.'))
+                -- A level-one row sits in the page title row, which shows no dirty star.
+                if not (row.dmmSetting and row.dmmSetting.mcHeader)
                     and Discovery.valid(shell) and Discovery.valid(row.labelWidget)
                     and Discovery.valid(row.valueWidget) then
                     local valueId=Discovery.address(row.valueWidget)

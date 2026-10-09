@@ -25,6 +25,7 @@
     "Scripts/dmm_lifecycle.lua": "Scripts/dmm_lifecycle.lua",
     "Scripts/vendor/menu_contributions.lua": "Scripts/vendor/menu_contributions.lua",
     "Scripts/menu_pages.lua": "Scripts/menu_pages.lua",
+    "Scripts/menu_data.lua": "Scripts/menu_data.lua",
     "Scripts/menu_slots.lua": "Scripts/menu_slots.lua",
     "Scripts/mcs_manifest.lua": "Scripts/mcs_manifest.lua",
     "Scripts/page_hooks.lua": "Scripts/page_hooks.lua",

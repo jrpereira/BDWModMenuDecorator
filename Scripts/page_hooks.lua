@@ -5,10 +5,12 @@
 -- A hooks file returns:
 --   {contract=1,
 --    manifest=function(context) return '<settings manifest text>' end,
+--    -- or menu=function(context) return <menu data, see menu_data.lua> end,
 --    load=function(context) return {[settingId]=value,...} end,                 -- optional
 --    apply=function(context,values,changes) return savedValues,warning end,   -- with load
 --    action=function(context,id,value,values) end}                            -- optional
--- context={page=<page id>,directory=<configDirectory>}. values holds every stored setting
+-- context={page=<page id>,directory=<configDirectory>}; manifest() and menu() also get
+-- moduleName(folder), a mod folder's name as the mod browser shows it. values holds every stored setting
 -- by id (mcNavigation and mcReadOnly rows are left out);
 -- changes holds {old=,new=} for edited settings. apply raises to reject the Apply. The
 -- values it returns become the committed values; ids it omits keep the values it was given.
@@ -38,7 +40,8 @@ function M.loader(loadfile)
                 local hooks=chunk()
                 assert(type(hooks)=='table','hooks file must return a table')
                 assert(hooks.contract==M.contract,'unsupported hooks contract '..tostring(hooks.contract))
-                assert(type(hooks.manifest)=='function','hooks need manifest()')
+                assert((hooks.manifest==nil)~=(hooks.menu==nil),'hooks need manifest() or menu()')
+                assert(type(hooks.manifest or hooks.menu)=='function','hooks manifest() or menu() must be a function')
                 assert((hooks.load==nil)==(hooks.apply==nil),'hooks need both load() and apply(), or neither')
                 assert(hooks.load==nil or (type(hooks.load)=='function' and type(hooks.apply)=='function'),
                     'hooks load() and apply() must be functions')
@@ -56,9 +59,17 @@ function M.context(page)
     return {page=page.id,directory=page.configDirectory}
 end
 
--- Runs a page's manifest hook. Errors propagate so the contributor is skipped.
-function M.manifest(hooks,context)
-    local text=hooks.manifest({page=context.page,directory=context.directory})
+-- Runs a page's manifest or menu hook; compile(menu) turns menu data into manifest text.
+-- Errors propagate so the contributor is skipped.
+function M.manifest(hooks,context,compile)
+    local copy={page=context.page,directory=context.directory,moduleName=context.moduleName}
+    if hooks.menu then
+        assert(compile,'menu data unavailable')
+        local menu=hooks.menu(copy)
+        assert(type(menu)=='table','menu() must return menu data')
+        return compile(menu)
+    end
+    local text=hooks.manifest(copy)
     assert(type(text)=='string' and not text:find('%z'),'manifest() must return text')
     return text
 end

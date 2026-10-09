@@ -74,11 +74,11 @@ local key,mode,toggle=row('Ability','82',slider),row('Mode','Tap',picker),row('E
 local literal=row('* Literal label','Option *',{kind='picker',labels={'Option *','Other'}})
 local fallback=row('No italic face','1',slider);fallback.labelWidget.Font.FontObject={}
 local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},mcHeader=true})
-header.providerId='ModCoreTemplates.module.VisualExample'
-local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},mcHeader=true})
-template.providerId='ModCoreTemplates'
+header.providerId='ExampleMod.page'
+local other=row('Quickslots','None',{kind='picker',labels={'None','Default'},mcHeader=true})
+other.providerId='OtherMod'
 local starless=row('Plain','Tap',{kind='picker',labels={'Tap','Hold'},values={0,1},noStar=true})
-local all={key,mode,toggle,literal,fallback,header,template,starless}
+local all={key,mode,toggle,literal,fallback,header,other,starless}
 local function star(r)
     assert(r.star and r.star.parent==r.line and r.line.children[2]==r.star,'missing star after the label')
     return r.star
@@ -91,10 +91,11 @@ local controller=M.new(function(e,d) errors[#errors+1]=e..': '..d end)
 assert(controller:open('host',function() return active end,live))
 controller:bind(all,routes)
 assert(#errors==0,table.concat(errors,'\n'))
-assert(#header.shell.children==0,'The level-one title row must not show a dirty star')
+-- Whichever page it is on.
+assert(#header.shell.children==0 and #other.shell.children==0,'The level-one title row must not show a dirty star')
 local function changed(r,text) r.valueWidget:SetText({ftext=text});controller:refresh(host) end
 
-for _,r in ipairs({key,mode,toggle,literal,fallback,template}) do
+for _,r in ipairs({key,mode,toggle,literal,fallback}) do
     assert(star(r).visibility==2,'a clean row hides the star after its label')
     for _,w in ipairs(r.shell.children) do assert(w.text~='*','dirty labels must not add a star of their own') end
 end

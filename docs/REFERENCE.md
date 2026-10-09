@@ -4,7 +4,7 @@ Start with the [developer guide](DEVELOPERS.md) for a complete first setting.
 Examples below are fragments unless they include a full file. `settingsManifest`
 means an INI string; replace example paths with absolute paths on the game host.
 
-- [Generated pages](#menu-pages) and [slot rows](#slot-rows)
+- [Generated pages](#menu-pages), [menu data](#menu-data) and [slot rows](#slot-rows)
 - [Page hooks](#page-hooks) and [page links](#page-links)
 - [Apply notifications](#apply-notifications)
 - [Presentation metadata](#presentation-metadata)
@@ -32,22 +32,26 @@ pages:publish({pages={
 
 Page fields: `id` (the contributor id or `<id>.*`; it is the `providerId` in Apply
 notifications), `name`, optional `author`, `version`, `description`, `visible`,
-`manifest` with `configDirectory`, and at most one of `under` (an earlier page of
-the same contributor) or `attach` (a mod folder name). `link` makes a
-[slot link](#slot-rows) entry. `group='module'` puts the
-page in the ModCore browser group and lists it on the ModCore page's Modules tab.
-`group='tool'` lists the page only on the ModCore page's Developer Tools tab, which
-opens it; the mod list does not show it. A tool page needs settings, as any page
-DMM opens does.
+settings as [`menu` data](#menu-data) (preferred) or a `manifest`, either with
+`configDirectory`, and at most one of `under` (an earlier page of the same
+contributor) or `attach` (a mod folder name). `link` makes a
+[slot link](#slot-rows) entry. `group='module'` lists the page on the ModCore
+page's Modules tab; a mod whose `mod.json` sets `"group": "ModCore"` is listed
+there without it. `group='tool'` lists the page only on the ModCore page's
+Developer Tools tab, which opens it; the mod list does not show it. A tool page
+needs settings, as any page DMM opens does.
 
 Placement on every menu build:
 
 - `under`: after the parent and its earlier children, indented.
 - `attach`: matched case-insensitively against a mod's name, id or detected
   folder. A detected placeholder without settings is hidden while the page is
-  shown. Otherwise the page follows that mod, indented, unless it is a module
-  group page. A name matching several mods rejects the contributor. A page with
-  `visible=false` still hides its detected placeholder.
+  shown, and the page becomes that mod's entry: its name, author, version, icon
+  and description come from the folder's `mod.json`, as the placeholder's would,
+  and the page's own are only fallbacks. So a page that holds another mod's
+  settings shows as that mod. Otherwise the page follows that mod, indented,
+  unless it is a module group page. A name matching several mods rejects the
+  contributor. A page with `visible=false` still hides its detected placeholder.
 - Otherwise: sorted by name with other mods, so a page that returns does not move.
 
 Contributed pages need no `mod_settings.ini` on disk; ModCoreSettings keeps
@@ -55,9 +59,55 @@ their manifest in memory and only uses `configDirectory` to resolve `ConfigFile`
 
 Publishing writes a new generation of files and then switches the contributor's
 shared variable; the menu keeps showing the previous generation until then.
-`publish` rejects structurally invalid pages. Settings manifests are parsed when
-the menu builds; any failure (manifest, id collision, ambiguous `attach`) skips
-that contributor's pages and is logged once. The rest of the menu is unaffected.
+`publish` rejects structurally invalid pages. Menu data and manifests are checked
+when the menu builds; any failure (menu data, manifest, id collision, ambiguous
+`attach`) skips that contributor's pages and is logged once. The rest of the menu
+is unaffected.
+
+### Menu data
+
+A page's `menu` describes its settings without DMM's manifest format;
+ModCoreSettings builds the page from it on every menu build. It is plain data:
+strings, finite numbers, booleans and tables.
+
+```lua
+menu={
+    storage={file='config.ini',section='Settings'},   -- optional
+    groups={
+        {id='Layout',label='Layout'},
+        {id='Advanced',heading=false,visible={field='Style',values={1}}},
+    },
+    fields={
+        {id='Style',group='Layout',label='Style',default=0,tabs=true,
+            choices={{value=0,label='Swap'},{value=1,label='Stack',note='Two rows'}}},
+        {id='Size',group='Layout',label='Size',default=100,range={min=10,max=200,step=5,suffix='%'},
+            relabel={field='Style',values={[1]='Stack size'}}},
+        {id='Gap',group='Advanced',label='Gap',default=4,range={min=0,max=20}},
+    },
+}
+```
+
+- `storage`: values are saved under `section` in `file`, relative to the page's
+  `configDirectory`. Without it, DMM's default storage applies.
+- Groups keep their order; only groups with fields are shown. A group's heading is
+  its `label`, else its `id`; `heading=false` hides it; `level` (0–6) sets its size.
+- A field has `choices` (a picker; up to 64) or a whole-number `range`, and a
+  `default` among them. One choice makes a button or, `readOnly`, a shown value.
+  `tabs=true` shows up to eight choices side by side.
+- `level` 1 puts a picker in the page's title row (one per page); 0 and 2–6 set
+  the label size.
+- `visible={field=,values={...}}` shows a field or group only while that picker
+  on the page holds one of the values. `relabel={field=,values={[value]='text'}}`
+  names it after that picker's value.
+- A choice's `note` is shown small under it. `module='<mod folder>'` notes that
+  mod's name, as the mod browser shows it.
+- `action=true` makes a navigation row (never stored; see [page hooks](#page-hooks));
+  `link='<page id>'` or `'<provider>:<slot>'` opens that page.
+- Ids are letters, digits and `_ . : -`; text has no `| ; [ ]` or control
+  characters. Invalid data names the offending id.
+
+A page with `menu` needs descriptor contract 4; ModCoreSettings builds that
+predate it skip the whole contribution.
 
 ### Slot rows
 
@@ -161,7 +211,7 @@ slots skips the whole contribution, pages included.
 ### Page hooks
 
 A page whose settings change at runtime, or that owns its own storage, names a
-hooks file instead of a manifest. ModCoreSettings loads it in its own menu
+hooks file instead of menu data or a manifest. ModCoreSettings loads it in its own menu
 state, once per session, and modules beside it can be `require`d. Every hooks
 folder shares DMM's module search path, and the first module loaded under a name
 wins, so give helper modules names unique to your mod (MCC's use `mc_`):
@@ -174,7 +224,8 @@ wins, so give helper modules names unique to your mod (MCC's use `mc_`):
 ```lua
 -- mcs_page.lua
 return {contract=1,
-    manifest=function(context) return settingsManifest end,           -- every menu build
+    menu=function(context) return menuData end,                        -- every menu build
+    -- or manifest=function(context) return settingsManifest end,
     load=function(context) return {[settingId]=value} end,             -- optional
     apply=function(context,values,changes) return saved,warning end,   -- with load
     action=function(context,id,value,values) end,                      -- optional
@@ -187,6 +238,10 @@ such as `PresetLabels=Play|Play` with `mcType=tab`, shows a single button that r
 it on each press. `id` and `value` are that row's; `values` holds every row's
 current value by id, navigation rows included. An error is logged as
 `HOOK_ACTION_FAILED` (ERROR) and the page carries on.
+
+`menu` returns [menu data](#menu-data), `manifest` a settings manifest; a hooks
+file has one of them. Both get `context.moduleName(folder)`, a mod folder's name
+as the mod browser shows it.
 
 `context` is `{page=<page id>,directory=<configDirectory>}`. With `load` and
 `apply`, ModCoreSettings never reads or writes the page's config file: `load`
@@ -333,17 +388,19 @@ heading's spacing. While it shows, the rows after it indent beneath it as they
 would under a visible heading. Pair it with `mcHeading=0` on the group so the
 heading does not show twice. It cannot be combined with `mcLevel` or `mcHeading`.
 
-Set `mcHeading=true` on a setting to use the title style. On generated
-ModCoreTemplates module pages, that setting
-shares the mod page title row above the divider. Its setting label is hidden
-while the original control retains its value and navigation. Dirty styling is
-omitted from this title row. The Templates page keeps its heading settings in
-the normal settings list with title styling. This supports
-toggles, pickers and sliders; at most one setting per provider may be a heading.
-Your mod still implements its settings' behavior.
+Set `mcHeading=true` on a setting to use the title style. That setting shares
+the mod page title row above the divider, on any page. Its setting label is
+hidden while the original control retains its value and navigation. Dirty
+styling is omitted from this title row. This supports toggles, pickers and
+sliders; at most one setting per provider may be a heading. Your mod still
+implements its settings' behavior.
 
 Categories can declare `mcHelp` to show Level5 explanatory text under
 the heading. DMM's `VisibleWhen` / `VisibleValues` rules still govern the group.
+
+`mcLabel=<text>` on a category is its heading's text in place of the category
+name, so two groups can share a heading text. `mcLabelWhen`/`mcLabels` still
+take precedence while their source holds a listed value.
 
 Set `mcHeading=0` on a category to suppress only that category's heading:
 

@@ -45,6 +45,11 @@ local sources={
     ['/m/ok/hooks.lua']=function() return {contract=1,manifest=function() return '' end} end,
     ['/m/old/hooks.lua']=function() return {contract=0,manifest=function() return '' end} end,
     ['/m/half/hooks.lua']=function() return {contract=1,manifest=function() end,load=function() end} end,
+    ['/m/menu/hooks.lua']=function() return {contract=1,menu=function(context)
+        return {groups={{id='G'}},fields={{id='M',group='G',label=context.moduleName('9_Mod'),default=0,
+            choices={{value=0,label='Shown'}},readOnly=true}}}
+    end} end,
+    ['/m/both/hooks.lua']=function() return {contract=1,menu=function() end,manifest=function() end} end,
 }
 local loads=0
 local load=Hooks.loader(function(path)
@@ -62,6 +67,14 @@ fails(function() load('/m/missing/hooks.lua') end,'cannot open','A missing file 
 local count=loads
 fails(function() load('/m/missing/hooks.lua') end,'cannot open','A failed file stays failed')
 assert(loads==count,'A failed hooks file is not re-run on every build')
+-- menu() returns menu data in place of a manifest; ModCoreSettings compiles it.
+fails(function() load('/m/both/hooks.lua') end,'manifest() or menu()','Hooks give a manifest or menu data')
+local menuText=Hooks.manifest(load('/m/menu/hooks.lua'),{page='P',directory='/m',
+    moduleName=function(folder) return folder..' named' end},function(menu) return require('menu_data').manifest(menu) end)
+assert(menuText:find('Label=9_Mod named',1,true) and menuText:find('mcReadOnly=1',1,true)
+    and #Choices.parse(menuText)==1,'menu() data compiles to a manifest DMM parses')
+fails(function() Hooks.manifest(load('/m/menu/hooks.lua'),{page='P',directory='/m',moduleName=tostring}) end,
+    'menu data unavailable','menu() needs a compiler')
 package.path=before
 
 -- Page generation: the manifest hook runs on every build and its text becomes the page's
