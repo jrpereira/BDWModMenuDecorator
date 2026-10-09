@@ -67,7 +67,7 @@ local function generated(contribution,page,parse,hooked)
         authorURL='',modURL='',logoFile='',logoAsset='',testOnly=false,
         choices=choices,settingsCount=#choices,choicesLoaded=true,deferred=false,
         path=page.configDirectory and (page.configDirectory:gsub('[/\\]+$','')..'/mod_settings.ini') or nil,
-        mcContribution=contribution.id,mcBrowserGroup=page.group,mcManifest=manifest,
+        mcContribution=contribution.id,mcBrowserGroup=page.group,mcBrowserIcon=page.icon,mcFolder=page.attach,mcManifest=manifest,
         mcHooks=hooks,mcHookContext=context}
     if page.link then
         -- Opens another page; it is selectable although it has no settings of its own.
@@ -166,7 +166,7 @@ function M.apply(providers,contributions,parse,state,report,slots,hooked)
                         table.remove(providers,indexOf(providers,match))
                         hidden[#hidden+1]=match
                         insertSorted(providers,provider)
-                    elseif match and page.group~='module' then
+                    elseif match and page.group==nil then
                         local tail=tails[match] or match
                         table.insert(providers,indexOf(providers,tail)+1,provider)
                         provider.mcBrowserLevel,provider.mcBrowserIndent=4,20
@@ -239,6 +239,17 @@ function M.install(pages,parse,contributions,report,slots,read,hooked)
         local ok,list=pcall(contributions)
         if not ok then once('CONTRIBUTIONS_UNAVAILABLE',tostring(list));list={} end
         M.apply(providers,list,parse,state,once,slots,hooked)
+        -- Every contributed page's version by id, hidden pages included, for the ModCore page.
+        local versions={}
+        for _,contribution in ipairs(list) do
+            for _,page in ipairs(contribution.pages or {}) do
+                if type(page.version)=='string' and page.version~='' then versions[page.id]=page.version end
+            end
+        end
+        local versioned={}
+        for key,value in pairs(api) do versioned[key]=value end
+        versioned.mcPageVersions=versions
+        api=versioned
         if slots then
             slots:outermost()
             slots.inserts,slots.applied=state.inserts,api.applied

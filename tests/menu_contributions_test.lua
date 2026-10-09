@@ -36,6 +36,7 @@ fails('must be absolute','MCT',{pages={{id='MCT',name='a',manifest=manifest,conf
 fails('configDirectory needs a manifest','MCT',{pages={{id='MCT',name='a',configDirectory='/x'}}})
 fails('folder name','MCT',{pages={{id='MCT',name='a',attach='Mods/x'}}})
 fails('invalid page 1 group','MCT',{pages={{id='MCT',name='a',group='core'}}})
+assert(Menu.validate('MCD',{pages={{id='MCD.sounds',name='Sounds Explorer',group='tool'}}}),'tool pages are valid')
 fails('invalid page 1 name','MCT',{pages={{id='MCT',name='a\nb'}}})
 fails('unknown contribution field','MCT',{pages={},aggregate={}})
 
@@ -157,3 +158,19 @@ other:publish({pages={{id='MCC',name='Controls'}}})
 assert(host.values[Menu.index]==Menu.hex('MCT')..' '..Menu.hex('MCC'))
 assert(not pcall(Menu.publisher,host,{id='MCT',directory='relative'}))
 print('PASS menu contribution client validates, round-trips and publishes generations')
+
+-- textTable decodes an mcTable row as ModCoreSettings does, for offline checks.
+local entries,columns=Menu.textTable(' 2190 : ← | U+25CF:● |a:b:c')
+assert(columns==1 and #entries==3 and entries[1].code=='2190' and entries[1].text=='←'
+    and entries[2].code=='U+25CF' and entries[3].code=='a' and entries[3].text=='b:c','codes end at the first colon')
+assert(select(2,Menu.textTable('A:a','4'))==4 and select(2,Menu.textTable('A:a',6))==6)
+local many={}
+for n=1,256 do many[n]='C:x' end
+assert(#Menu.textTable(table.concat(many,'|'))==256)
+many[257]='C:x'
+for _,bad in ipairs({{'',nil},{'A',nil},{':a',nil},{'A:',nil},{'A:a|',nil},{'A:a||B:b',nil},{'A\t:a',nil},
+        {'ABCDEFGHI:a',nil},{'A:123456789',nil},{'\xff:a',nil},{table.concat(many,'|'),nil},
+        {'A:a','0'},{'A:a','7'},{'A:a','2.0'},{'A:a',' 2'},{'A:a',2.5},{'A:a','x'}}) do
+    assert(not pcall(Menu.textTable,bad[1],bad[2]),tostring(bad[1])..' / '..tostring(bad[2]))
+end
+print('PASS textTable decodes mcTable entries and columns')

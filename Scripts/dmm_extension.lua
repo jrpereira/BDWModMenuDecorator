@@ -20,6 +20,15 @@ local report=(function()
     return module('log_events').reporter(logger)
 end)()
 
+-- Whether a player is in the world: a player controller possessing a pawn. The main menu
+-- has none.
+local function playerExists()
+    local controller=FindFirstOf('PlayerController')
+    if not controller or not controller:IsValid() then return false end
+    local pawn=controller:K2_GetPawn()
+    return pawn~=nil and pawn:IsValid()
+end
+
 local extension
 extension={
     id='ModCoreSettings',
@@ -43,11 +52,14 @@ extension={
         package.loaded.mcs_manifest=module('mcs_manifest')
         local navigation=module('navigation')
         local mapped=module('mapped_presets')
+        local contributions=module('vendor/menu_contributions')
         local presentation=module('presentation')
         local browserGroups=module('browser_groups')
+        local moduleCategories=module('module_categories')
+        local taxonomy=module('mcs_taxonomy').new(module('mcs_taxonomy_data'))
+        local indexJson=module('mcs_module_json')
         local config=module('init_config')
         local lifecycle=module('dmm_lifecycle')
-        local contributions=module('vendor/menu_contributions')
         local menuPages=module('menu_pages')
         local pageLinks=module('page_links')
         local menuSlots=module('menu_slots')
@@ -65,8 +77,17 @@ extension={
             standardControls=module('standard_controls')})
         navigation.install(dmm.choices)
         mapped.install(dmm.choices,dmm.controls)
-        presentation.install(dmm.choices,dmm.controls,dmm.pages,{keyColumn=keybind.layout})
-        browserGroups.install(dmm.pages,report,function(content) return dmm.choices.parse(content) end)
+        -- UE4SS.log sits in the ue4ss folder, above Mods/<this mod>/Scripts/.
+        local errorLog=module('error_log')
+        local ue4ss=directory:match('^(.*[/\\])[^/\\]+[/\\][^/\\]+[/\\]Scripts[/\\]$')
+        presentation.install(dmm.choices,dmm.controls,dmm.pages,{keyColumn=keybind.layout,
+            textSources={errors=ue4ss and errorLog.reader(ue4ss..'UE4SS.log') or nil},textFormat=errorLog.text,
+            textTable=contributions.textTable,playerExists=playerExists})
+        local mods=directory:match('^(.*[/\\])[^/\\]+[/\\]Scripts[/\\]$')
+        browserGroups.install(dmm.pages,report,function(content) return dmm.choices.parse(content) end,
+            browserGroups.folderVersion(mods),browserGroups.folderManifest(mods),
+            moduleCategories.reader(directory..'../cache/modules_register.json',directory..'../config.ini',nil,
+                {taxonomy=taxonomy,json=indexJson,report=report}))
         config.install(dmm.choices)
         assert(ModRef and type(ModRef.GetSharedVariable)=='function','DMM shared variables unavailable')
         local function read(path)

@@ -44,6 +44,23 @@ providers[1].choices[1].mcLinkPage='Empty'
 page.controls:show(1)
 model:set(1,0)
 assert(page.controls:tick()==true and texts[1]=='Empty page is unavailable.')
+-- A page left out of the browser list opens through DMM's full row list; the listed rows return.
+page,model,calls,texts,providers=setup(false)
+providers[3].mcBrowserHidden=true
+local listed={{providerIndex=1}}
+page.rows,page.allRows=listed,{{providerIndex=1},{providerIndex=3}}
+local opened
+function page:showDetail(row) opened=self.rows[row];calls[#calls+1]='detail '..row end
+page.controls:show(1)
+model:set(1,0)
+assert(page.controls:tick()==true and opened==page.allRows[2] and page.rows==listed
+    and table.concat(calls,',')=='show,tick,browser,detail 1','a hidden page opens through its link')
+providers[3].mcBrowserHidden=nil
+calls,opened={},nil
+page.controls:show(1)
+model:set(1,0)
+assert(page.controls:tick()==true and opened==nil and texts[#texts]=='Target page is unavailable.',
+    'only pages hidden from the browser open outside the listed rows')
 -- A slot link opens its host page and sets the navigation pickers that gate the slot.
 do
     local calls={}

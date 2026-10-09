@@ -54,6 +54,20 @@ function M.wrap(page,providers,api,slots)
                         return true
                     end
                 end
+                -- A page left out of the browser list (mcBrowserHidden) opens through its row
+                -- in DMM's full list, offered to showDetail as the only listed row.
+                for _,row in ipairs(provider.mcBrowserHidden and page.allRows or {}) do
+                    if row.providerIndex==index then
+                        if type(page.showBrowser)=='function' then page:showBrowser() end
+                        local listed=page.rows
+                        page.rows={row}
+                        local ok,err=pcall(page.showDetail,page,1)
+                        page.rows=listed
+                        assert(ok,err)
+                        if slot then showSlot(page,slot) end
+                        return true
+                    end
+                end
             end
         end
         status(target..' page is unavailable.')

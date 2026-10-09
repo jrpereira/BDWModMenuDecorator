@@ -4,14 +4,14 @@
 -- variable per contributor; ModCoreSettings reads them while building the menu.
 -- Descriptors use contract 1, contract 2 when they carry slot rows or slot links, or
 -- contract 3 when a page names a hooks file.
-local M={version=3,contract=1,rowsContract=2,hooksContract=3}
+local M={version=5,contract=1,rowsContract=2,hooksContract=3}
 local PREFIX='MCS_MenuContrib_v1_'
 M.prefix,M.index=PREFIX,PREFIX..'index'
 local MAX_PAGES,MAX_ROWS,MAX_ROW_SETTINGS,MAX_MANIFEST=256,64,32,262144
 local PAGE_KEYS={id=true,name=true,author=true,version=true,description=true,manifest=true,
-    configDirectory=true,visible=true,under=true,attach=true,group=true,link=true,hooks=true}
+    configDirectory=true,visible=true,under=true,attach=true,group=true,link=true,hooks=true,icon=true}
 local DESCRIPTOR_KEYS={id=true,name=true,author=true,version=true,description=true,manifestFile=true,
-    configDirectory=true,visible=true,under=true,attach=true,group=true,link=true,hooks=true}
+    configDirectory=true,visible=true,under=true,attach=true,group=true,link=true,hooks=true,icon=true}
 local ROW_KEYS={page=true,slot=true,settings=true}
 
 -- A slot address is '<provider>:<slot>'. A ModCore<Name> provider may be written as its
@@ -67,10 +67,14 @@ local function check(contributor,contribution)
         line(page.name,200,where..' name')
         optional(page.author,120,where..' author')
         optional(page.version,64,where..' version')
+        -- icon: a short glyph shown before the page's name in the ModCore browser group.
+        optional(page.icon,16,where..' icon')
         assert(page.description==nil or (type(page.description)=='string' and #page.description<=4096
             and not page.description:find('%z')),'invalid '..where..' description')
         assert(page.visible==nil or type(page.visible)=='boolean','invalid '..where..' visible')
-        assert(page.group==nil or page.group=='module','invalid '..where..' group')
+        -- module: listed in the ModCore browser group. tool: listed only under the ModCore
+        -- page's Developer Tools tab.
+        assert(page.group==nil or page.group=='module' or page.group=='tool','invalid '..where..' group')
         -- A hooks page generates its manifest in ModCoreSettings each time the menu is built.
         if page.hooks~=nil then
             line(page.hooks,1024,where..' hooks')
@@ -146,6 +150,31 @@ function M.validate(contributor,contribution)
     return ok,not ok and tostring(err) or nil
 end
 
+-- An mcTable row's entries, decoded as ModCoreSettings decodes them, so a contributor can
+-- check its manifest values offline. value is '<code>:<text>|<code>:<text>|...': the code
+-- ends at the first ':', and neither part may contain '|'. Both are trimmed, non-empty and
+-- at most 8 characters. columns is mcColumns, 1 through 6 (1 when nil). Returns the
+-- entries as {code=,text=} and the column count; raises on malformed input.
+M.MAX_TABLE_ENTRIES,M.MAX_TABLE_COLUMNS=256,6
+function M.textTable(value,columns)
+    assert(type(value)=='string' and #value<=8192 and utf8.len(value) and not value:find('%c'),
+        'invalid table text')
+    local entries={}
+    for entry in (value..'|'):gmatch('(.-)|') do
+        local n=#entries+1
+        assert(n<=M.MAX_TABLE_ENTRIES,'table exceeds '..M.MAX_TABLE_ENTRIES..' entries')
+        local code,text=entry:match('^%s*([^:]-)%s*:%s*(.-)%s*$')
+        assert(code and code~='' and text~='','table entry '..n..' needs <code>:<text>')
+        assert(utf8.len(code)<=8 and utf8.len(text)<=8,'table entry '..n..' exceeds 8 characters')
+        entries[n]={code=code,text=text}
+    end
+    local count=columns==nil and 1 or math.tointeger(tonumber(columns))
+    assert(count and count>=1 and count<=M.MAX_TABLE_COLUMNS
+        and (type(columns)~='string' or columns:match('^%d$')),
+        'mcColumns must be an integer from 1 through '..M.MAX_TABLE_COLUMNS)
+    return entries,count
+end
+
 local function escape(value)
     return (value:gsub('\\','\\\\'):gsub('\n','\\n'):gsub('\r','\\r'))
 end
@@ -179,7 +208,7 @@ function M.encode(contributor,generation,contribution)
     local files={}
     for n,page in ipairs(contribution.pages) do
         out[#out+1]='[Page.'..n..']'
-        for _,key in ipairs({'id','name','author','version','description','configDirectory','under','attach','group','link','hooks'}) do
+        for _,key in ipairs({'id','name','author','version','description','configDirectory','under','attach','group','link','hooks','icon'}) do
             if page[key]~=nil then out[#out+1]=key..'='..escape(page[key]) end
         end
         if page.visible~=nil then out[#out+1]='visible='..(page.visible and '1' or '0') end

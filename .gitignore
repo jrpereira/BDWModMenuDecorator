@@ -3,6 +3,8 @@
 /log_level.txt
 /artifacts/
 /work/
+/state/
+/data/mod_catalog.json
 diagnostics/
 evidence/
 /tools/runtime_evidence.py

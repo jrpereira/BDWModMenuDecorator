@@ -6,11 +6,15 @@
 --   {contract=1,
 --    manifest=function(context) return '<settings manifest text>' end,
 --    load=function(context) return {[settingId]=value,...} end,                 -- optional
---    apply=function(context,values,changes) return savedValues,warning end}    -- with load
+--    apply=function(context,values,changes) return savedValues,warning end,   -- with load
+--    action=function(context,id,value,values) end}                            -- optional
 -- context={page=<page id>,directory=<configDirectory>}. values holds every stored setting
 -- by id (mcNavigation and mcReadOnly rows are left out);
 -- changes holds {old=,new=} for edited settings. apply raises to reject the Apply. The
 -- values it returns become the committed values; ids it omits keep the values it was given.
+-- action runs when a navigation row (not a page link) is set, even to its current value,
+-- as a click on a single-button row does: id and value are that row's, and values holds
+-- every row's current value by id. An error is logged and the page carries on.
 local M={contract=1}
 
 local function directoryOf(path) return assert(path:match('^(.*)[/\\][^/\\]+$'),'invalid hooks path') end
@@ -38,6 +42,7 @@ function M.loader(loadfile)
                 assert((hooks.load==nil)==(hooks.apply==nil),'hooks need both load() and apply(), or neither')
                 assert(hooks.load==nil or (type(hooks.load)=='function' and type(hooks.apply)=='function'),
                     'hooks load() and apply() must be functions')
+                assert(hooks.action==nil or type(hooks.action)=='function','hooks action() must be a function')
                 return hooks
             end)
             entry={ok=ok,result=result};cache[path]=entry
@@ -75,9 +80,28 @@ function M.install(choices,report)
     if choices.mcHooksVersion then return false end
     report=report or function() end
     local open=choices.open
+    -- Setting a navigation row runs the page's action hook.
+    local function actions(model,hooks,context)
+        if not hooks.action or model.error then return model end
+        local set=model.set
+        function model:set(i,value,...)
+            local results=table.pack(set(self,i,value,...))
+            local item=self.items[i]
+            if item and item.mcNavigation and not item.mcLinkPage then
+                local values={}
+                for n,other in ipairs(self.items) do values[other.id]=self.pending[n] end
+                local ok,why=pcall(hooks.action,{page=context.page,directory=context.directory},
+                    item.id,self.pending[i],values)
+                if not ok then report('HOOK_ACTION_FAILED',context.page..' '..item.id..': '..tostring(why)) end
+            end
+            return table.unpack(results,1,results.n)
+        end
+        return model
+    end
     choices.open=function(provider)
         local hooks=provider.mcHooks
-        if not hooks or not hooks.apply then return open(provider) end
+        if not hooks then return open(provider) end
+        if not hooks.apply then return actions(open(provider),hooks,provider.mcHookContext) end
         local context=provider.mcHookContext
         local copy={}
         for key,value in pairs(provider) do copy[key]=value end
@@ -132,7 +156,7 @@ function M.install(choices,report)
             end
             return true,warning~=nil and tostring(warning) or nil,event
         end
-        return model
+        return actions(model,hooks,context)
     end
     choices.mcHooksVersion=1
     return true

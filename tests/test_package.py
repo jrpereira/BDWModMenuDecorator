@@ -1,5 +1,6 @@
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import tempfile
@@ -29,12 +30,16 @@ class PackageTests(unittest.TestCase):
                 # Every package ships enabled by default.
                 self.assertIn(pack.MODULE + '/enabled.txt', names)
                 self.assertNotIn(pack.MODULE + '/Scripts/temporary_probe.lua', names)
-                self.assertEqual(len([n for n in names if '/Scripts/' in n]), 26)
+                declared = json.loads((ROOT / 'release-manifest.json').read_text())['files']
+                self.assertEqual({n for n in names if '/Scripts/' in n},
+                                 {pack.MODULE + '/' + n for n in declared if n.startswith('Scripts/')})
+                self.assertIn(pack.MODULE + '/Scripts/module_categories.lua', names)
                 # The shared manifest reader is loaded by the DMM extension.
                 self.assertIn('1_ModCore_Settings/Scripts/mcs_manifest.lua', names)
                 self.assertIn('1_ModCore_Settings/Scripts/dmm_extension.lua', names)
                 self.assertIn('1_ModCore_Settings/Scripts/navigation.lua', names)
                 self.assertIn('1_ModCore_Settings/Scripts/browser_groups.lua', names)
+                self.assertIn('1_ModCore_Settings/Scripts/error_log.lua', names)
                 self.assertIn('1_ModCore_Settings/mod_settings.ini', names)
                 # Documents in docs/ are published at the module root.
                 for doc in ('README.md', 'CHANGELOG.md', 'BUILD.md', 'DEVELOPERS.md'):

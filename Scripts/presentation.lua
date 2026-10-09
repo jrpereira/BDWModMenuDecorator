@@ -27,12 +27,14 @@ local styles={
 -- choice, while the heading groups rows.
 local settingLabelSizes={[2]=20}
 local headerSeparatorDim={R=0.62,G=0.55,B=0.42,A=0.25}
+-- Opacity of anything shown faded: a disabled choice, or a row mcDimValues fades.
+local fadedOpacity=0.45
 local headerSeparatorBright={R=0.62,G=0.55,B=0.42,A=0.9}
 local headerGlowOn={R=0.95,G=0.63,B=0.08,A=0.10}
 local headerGlowOff={R=0,G=0,B=0,A=0}
 -- The page status shares the header tab row, left of the tabs, while it has
 -- this much width; otherwise it drops below them at full width.
-local headerStatusMinWidth,headerStatusGap,headerTabHeight=160,12,28
+local headerStatusMinWidth,headerStatusGap,headerTabHeight,headerGap=160,12,28,12
 -- A cycle button's background matches the keybind editor's Mode control.
 local cycleBackground={R=0.12,G=0.12,B=0.12,A=0.09}
 -- A navigation picker's choice while it separates two colliding keybinds.
@@ -50,6 +52,13 @@ function M.parse(content,items)
         assert(value=='0' or value=='1' or value=='true' or value=='false',
             name..' must be 0, 1, true, or false')
         return value=='1' or value=='true'
+    end
+    -- mcPlayerExists=1 shows a row or category only while a player is in the world; 0 only
+    -- while none is.
+    local function playerRule(value)
+        if value==nil then return nil end
+        assert(value=='0' or value=='1','mcPlayerExists must be 0 or 1')
+        return value=='1'
     end
     local function labelRule(r)
         if not r.mcLabelWhen and not r.mcLabels then return nil end
@@ -83,6 +92,20 @@ function M.parse(content,items)
         end
         return notes
     end
+    -- mcDimValues=<value>|<value> fades the row while its own value is one of these.
+    local function dimValues(r,s)
+        if r.mcDimValues==nil then return nil end
+        assert(s.kind=='picker','mcDimValues requires a picker')
+        local values={}
+        for entry in (r.mcDimValues..'|'):gmatch('(.-)|') do
+            local value=tonumber(trim(entry))
+            local valid=false
+            for _,v in ipairs(s.values) do if v==value then valid=true end end
+            assert(valid,'mcDimValues value outside the row\'s choices')
+            values[value]=true
+        end
+        return values
+    end
     for _,section in ipairs(sections) do
         local r=section.fields
         local group=section.name:match('^Category%.(.+)$')
@@ -105,7 +128,8 @@ function M.parse(content,items)
                 else parent={key=label,label=label,font=font};parents[label]=parent end
             elseif r.mcParentLevel~=nil then error('mcParentLevel requires mcParent') end
             groups[group]={font=level(r.mcLevel),help=r.mcHelp,labelRule=labelRule(r),order=order,parent=parent,
-                heading=flag(r.mcHeading,'mcHeading')~=false}
+                heading=flag(r.mcHeading,'mcHeading')~=false,playerExists=playerRule(r.mcPlayerExists),
+                silent=flag(r.mcSilent,'mcSilent')}
         end
         if section.setting then
             local id=section.id
@@ -120,9 +144,33 @@ function M.parse(content,items)
                     'mcCategory cannot be combined with mcLevel or mcHeading')
                 s.mcWrap=flag(r.mcWrap,'mcWrap')
                 assert(not s.mcWrap or s.kind=='picker' and r.mcReadOnly=='1','mcWrap requires a read-only picker')
+                -- mcText=<source> shows a source's text in a scrollable area; the host
+                -- passes the sources to install().
+                if r.mcText~=nil then
+                    assert(s.kind=='picker' and r.mcReadOnly=='1','mcText requires a read-only picker')
+                    assert(r.mcText:match('^[%w_]+$') and #r.mcText<=64,'invalid mcText')
+                end
+                s.mcText=r.mcText
+                -- mcTable=<code>:<text>|... shows static pairs in mcColumns columns. Its
+                -- entries are decoded when the row is built, so a malformed table shows
+                -- a placeholder instead of skipping the page.
+                if r.mcTable~=nil then
+                    assert(s.kind=='picker' and r.mcReadOnly=='1','mcTable requires a read-only picker')
+                    assert(r.mcText==nil and not s.mcWrap and r.mcType==nil,
+                        'mcTable cannot be combined with mcText, mcWrap or mcType')
+                    s.mcTable={text=r.mcTable,columns=r.mcColumns}
+                else
+                    assert(r.mcColumns==nil,'mcColumns requires mcTable')
+                    s.mcTable=nil
+                end
+                s.mcPlayerExists=playerRule(r.mcPlayerExists)
+                -- mcSilent=1 keeps DMM's interface sounds off the row, as on a row that
+                -- plays sounds of its own.
+                s.mcSilent=flag(r.mcSilent,'mcSilent')
                 s.mcReferenceLabel=r.mcReferenceLabel
                 s.mcLabelRule=labelRule(r)
                 s.mcChoiceNotes=choiceNotes(r,s)
+                s.mcDimValues=dimValues(r,s)
                 s.mcTabs,s.mcCycle,s.mcTabsWidth,s.mcHeader=nil,nil,nil,nil
                 local hasLevel=r.mcLevel~=nil
                 local decoration=r.mcType
@@ -184,8 +232,60 @@ end
 function M.install(choices,controls,pages,options)
     if controls.mcPresentationVersion then return false end
     local keyColumn=options and options.keyColumn
+    -- textSources[name].poll() returns lines and whether they changed, for mcText rows.
+    local textSources=options and options.textSources or {}
+    local textArea={height=360,poll=1,format=function(lines) return table.concat(lines,'\n') end}
+    if options and options.textFormat then textArea.format=options.textFormat end
+    -- textTable(text,columns) decodes an mcTable row: menu_contributions.textTable.
+    local textTable=options and options.textTable or function() error('table decoder unavailable',0) end
+    -- An mcTable line: codes 12pt muted, texts 18pt, each centred in a cell with tablePad
+    -- pixels around it. Sizes come from Afacad: a point is 4/3 pixel, a line 4/3 em, a code
+    -- character at most 2/3 em and a text character about 1 em.
+    local tableCode,tableText,tablePad=12,18,4
+    local function em(points) return points*4/3 end
+    local tableLine=math.ceil(em(math.max(tableCode,tableText))*4/3)+2*tablePad
     local parse,build=choices.parse,controls.build
     choices.parse=function(content) return M.parse(content,parse(content)) end
+    -- mcPlayerExists works like a hidden Yes|No picker that follows whether a player is in
+    -- the world: rows and categories marked with it show only on its value, alongside their
+    -- VisibleWhen. options.playerExists() answers it each time DMM checks visibility.
+    local playerExists=options and options.playerExists or function() return false end
+    local open=choices.open
+    choices.open=function(provider)
+        local model=open(provider)
+        local function wanted(item)
+            local group=item.mcGroup and item.mcGroup.playerExists
+            return item.mcPlayerExists,group
+        end
+        local gated=false
+        for _,item in ipairs(model.items or {}) do
+            local own,group=wanted(item)
+            gated=gated or own~=nil or group~=nil
+        end
+        if not gated then return model end
+        local visibility=model.visibility
+        function model:visibility()
+            local visible=visibility(self)
+            local ok,exists=pcall(playerExists)
+            exists=ok and exists==true
+            for i,item in ipairs(self.items) do
+                local own,group=wanted(item)
+                if (own~=nil and own~=exists) or (group~=nil and group~=exists) then visible[i]=false end
+            end
+            -- As in DMM, a row whose VisibleWhen source is hidden is hidden too.
+            local changed=true
+            while changed do
+                changed=false
+                for i,item in ipairs(self.items) do
+                    for _,rule in ipairs(visible[i] and item.visibility or {}) do
+                        if not visible[rule.target] then visible[i],changed=false,true;break end
+                    end
+                end
+            end
+            return visible
+        end
+        return model
+    end
     controls.build=function(tree,providers,api)
         local adapted={}
         -- Cached pages may be evicted; do not retain their Lua widget wrappers.
@@ -198,6 +298,16 @@ function M.install(choices,controls,pages,options)
         -- seen, and how many of that row's value buttons follow before the next label.
         local constructing,pendingHelp,buttonSettingIndex,buttonsToSkip
         for k,v in pairs(api) do adapted[k]=v end
+        -- DMM plays a sound after making the row its own: hovered for Hover, current for
+        -- Select and Change. A silent row (mcSilent, or its category's) plays none.
+        if api.feedback then
+            adapted.feedback=function(action,...)
+                local index=ui and ui.active and (action=='Hover' and ui.hovered or ui.current)
+                local setting=index and ui.model and ui.model.items and ui.model.items[index]
+                if setting and (setting.mcSilent or setting.mcGroup and setting.mcGroup.silent) then return end
+                return api.feedback(action,...)
+            end
+        end
         adapted.setText=function(widget,value)
             local signal=valueSignals[widget]
             if not signal then return api.setText(widget,value) end
@@ -262,6 +372,25 @@ function M.install(choices,controls,pages,options)
             local slot=api.need(box:SetContent(child),'MCS presentation size')
             slot:SetHorizontalAlignment(0);slot:SetVerticalAlignment(0)
             return box
+        end
+        -- A tab keeps at least share pixels but grows to fit its label with tabPadding
+        -- pixels each side. The text width is estimated for the layout; the box's minimum
+        -- width (not an override) lets a label wider than the estimate still widen its tab.
+        local tabPadding=3
+        local function tabWidth(text,size,share,inset)
+            local chars=utf8.len(text) or #text
+            return math.max(share,math.ceil(chars*size*0.6)+2*(tabPadding+inset))
+        end
+        local function tabSized(child,width,height)
+            local box=new('SizeBox');box:SetMinDesiredWidth(width);box:SetHeightOverride(height)
+            local slot=api.need(box:SetContent(child),'MCS presentation size')
+            slot:SetHorizontalAlignment(0);slot:SetVerticalAlignment(0)
+            return box
+        end
+        local function padTab(button,side)
+            local style=button.WidgetStyle
+            style.NormalPadding={Left=side,Top=0,Right=side,Bottom=0}
+            style.PressedPadding={Left=side,Top=0,Right=side,Bottom=0}
         end
         local pickerRightMargin=24
         -- Label column of a wrapped read-only row; the value takes the rest.
@@ -394,7 +523,8 @@ function M.install(choices,controls,pages,options)
                     local tabs=new('HorizontalBox')
                     row.mcTabs={};row.mcHeaderSeparators={}
                     local count=#setting.values
-                    local width=math.floor(math.min(110,(572-(count+1))/count))
+                    local share=math.floor(math.min(110,(572-(count+1))/count))
+                    local total=count+1
                     local function separator()
                         local bar=new('Border');bar:SetBrushColor(headerSeparatorDim)
                         add(tabs,sized(bar,1,headerTabHeight))
@@ -403,15 +533,15 @@ function M.install(choices,controls,pages,options)
                     separator()
                     for n,value in ipairs(setting.values) do
                         local button,label=api.button(tree,setting.labels[n]);button.IsFocusable=false
-                        local style=button.WidgetStyle
-                        style.NormalPadding={Left=4,Top=0,Right=4,Bottom=0}
-                        style.PressedPadding={Left=4,Top=0,Right=4,Bottom=0}
+                        padTab(button,tabPadding)
                         api.Theme.font(label,api.theme,12)
                         label:SetJustification(1);label:SetTextOverflowPolicy(1)
                         label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
                         local glow=new('Border');glow:SetBrushColor(headerGlowOff)
                         api.need(glow:SetContent(button),'MCS header tab glow')
-                        add(tabs,sized(glow,width,headerTabHeight))
+                        local width=tabWidth(setting.labels[n],12,share,0)
+                        total=total+width
+                        add(tabs,tabSized(glow,width,headerTabHeight))
                         row.mcTabs[#row.mcTabs+1]={widget=button,label=label,value=value,
                             pressed=false,pointer=false,glow=glow}
                         separator()
@@ -419,7 +549,7 @@ function M.install(choices,controls,pages,options)
                     local slot=add(ui.mcHeaderTabs,tabs)
                     slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(1)
                     row.mcHeaderTabsBox=tabs
-                    row.mcHeaderTabsWidth=count*width+count+1
+                    row.mcHeaderTabsWidth=total
                     if row.value then row.value:SetVisibility(1) end
                     for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
                 elseif setting.mcTabs then
@@ -429,22 +559,37 @@ function M.install(choices,controls,pages,options)
                     row.mcTabs={}
                     local count=#setting.values
                     local providerLink=setting.mcNavigation and setting.mcLinkPage
+                    -- A read-only status or navigation action whose choices share one
+                    -- label (No settings beside an Open link, or Play) shows one button,
+                    -- sized and placed like a link.
+                    if (setting.mcReadOnly or setting.mcNavigation) and not setting.mcReferenceLabel then
+                        local same=true
+                        for _,text in ipairs(setting.labels) do same=same and text==setting.labels[1] end
+                        providerLink=providerLink or same
+                    end
                     local totalWidth=providerLink and 160 or
                         (setting.mcReferenceLabel and 150 or (setting.mcTabsWidth or math.min(384,110*count)))
                     local choices={}
                     for n,value in ipairs(setting.values) do
                         if not providerLink or n==1 then choices[#choices+1]={value=value,label=setting.labels[n]} end
                     end
-                    -- Outlined choices sit 4 pixels apart within the reserved width.
-                    local width=(totalWidth-4*(#choices-1))/#choices
+                    -- Outlined choices sit 4 pixels apart, sharing the reserved width; a
+                    -- longer label widens its own choice, and the row reserves the total.
+                    local share=(totalWidth-4*(#choices-1))/#choices
+                    totalWidth=4*(#choices-1)
+                    for _,choice in ipairs(choices) do
+                        choice.width=tabWidth(choice.label,14,share,1)
+                        totalWidth=totalWidth+choice.width
+                    end
                     for n,choice in ipairs(choices) do
                         local button,label=api.button(tree,choice.label);button.IsFocusable=false
+                        padTab(button,tabPadding+1)
                         label:SetJustification(1);label:SetTextOverflowPolicy(1)
-                        -- Stretch the text block across the fixed-width button, then
-                        -- let centered text justification position its contents.
+                        -- Stretch the text block across the button, then let centered
+                        -- text justification position its contents.
                         label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
                         local frame,outline=outlined(button)
-                        local box=sized(frame,width,32)
+                        local box=tabSized(frame,choice.width,32)
                         local boxSlot=add(tabs,box)
                         boxSlot:SetVerticalAlignment(2)
                         if n>1 then boxSlot:SetPadding({Left=4,Top=0,Right=0,Bottom=0}) end
@@ -503,6 +648,85 @@ function M.install(choices,controls,pages,options)
                     row.mcTabs={{widget=button,label=label,value=setting.values[1],pressed=false,pointer=false,
                         cycle=true,box=box}}
                     for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
+                elseif setting.mcText then
+                    -- A source's text in a fixed-height area across the row, scrolled to
+                    -- its newest line at the bottom; tick() refreshes it while it shows.
+                    local text=api.caption(tree,'')
+                    api.Theme.font(text,api.theme,12);text:SetFont(text.Font)
+                    text:SetJustification(0);text:SetAutoWrapText(true)
+                    local scroll=new('ScrollBox')
+                    add(scroll,text)
+                    local box=new('SizeBox');box:SetWidthOverride(584-2*pickerRightMargin)
+                    box:SetHeightOverride(textArea.height)
+                    api.need(box:SetContent(scroll),'MCS text area')
+                    local overlay=row.background:GetParent()
+                    local slot=add(overlay,box);slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(2)
+                    slot:SetPadding({Left=pickerRightMargin,Top=0,Right=0,Bottom=0})
+                    row.wrapper:SetHeightOverride(textArea.height+16)
+                    row.mcLabel:SetVisibility(1)
+                    for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
+                    row.mcText={source=textSources[setting.mcText],label=text,scroll=scroll,polled=nil}
+                elseif setting.mcTable then
+                    -- Code and text pairs across the row in columns filled top to bottom.
+                    -- Every code and every text sits centred in a cell of fixed size, at
+                    -- least a line tall, so nothing is clipped off-centre, the columns stay
+                    -- level and the texts line up whatever the codes' widths. Each pair is
+                    -- centred in its column. Taller than textArea.height, the table scrolls.
+                    local width=584-2*pickerRightMargin
+                    local ok,entries,columns=pcall(textTable,setting.mcTable.text,setting.mcTable.columns)
+                    local content,height
+                    if ok then
+                        local lines=math.max(1,math.ceil(#entries/columns))
+                        local cell=math.floor(width/columns)
+                        local codes,texts=0,0
+                        for _,entry in ipairs(entries) do
+                            codes=math.max(codes,utf8.len(entry.code));texts=math.max(texts,utf8.len(entry.text))
+                        end
+                        local textWidth=math.ceil(texts*em(tableText))+2*tablePad
+                        local codeWidth=math.max(0,math.min(math.ceil(codes*em(tableCode)*2/3)+2*tablePad,cell-textWidth))
+                        local function centred(widget,cellWidth)
+                            widget:SetJustification(1)
+                            local box=new('SizeBox');box:SetWidthOverride(cellWidth);box:SetHeightOverride(tableLine)
+                            local slot=api.need(box:SetContent(widget),'MCS table cell')
+                            slot:SetHorizontalAlignment(2);slot:SetVerticalAlignment(2)
+                            return box
+                        end
+                        content=new('HorizontalBox')
+                        for c=1,columns do
+                            local column=new('VerticalBox')
+                            for n=(c-1)*lines+1,math.min(c*lines,#entries) do
+                                local pair=new('HorizontalBox')
+                                local code=api.caption(tree,entries[n].code)
+                                api.Theme.font(code,api.theme,tableCode);api.Theme.textColor(code,'muted')
+                                add(pair,centred(code,codeWidth)):SetVerticalAlignment(2)
+                                local text=api.caption(tree,entries[n].text)
+                                api.Theme.font(text,api.theme,tableText)
+                                add(pair,centred(text,textWidth)):SetVerticalAlignment(2)
+                                local box=new('SizeBox');box:SetWidthOverride(cell);box:SetHeightOverride(tableLine)
+                                local slot=api.need(box:SetContent(pair),'MCS table pair')
+                                slot:SetHorizontalAlignment(2);slot:SetVerticalAlignment(2)
+                                add(column,box)
+                            end
+                            add(content,column)
+                        end
+                        height=math.min(lines*tableLine,textArea.height)
+                    else
+                        content=api.caption(tree,'Unavailable: '..tostring(entries))
+                        api.Theme.font(content,api.theme,12);api.Theme.textColor(content,'muted')
+                        content:SetAutoWrapText(true)
+                        height=40
+                    end
+                    local scroll=new('ScrollBox')
+                    add(scroll,content)
+                    local box=new('SizeBox');box:SetWidthOverride(width);box:SetHeightOverride(height)
+                    api.need(box:SetContent(scroll),'MCS table area')
+                    local overlay=row.background:GetParent()
+                    local slot=add(overlay,box);slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(2)
+                    slot:SetPadding({Left=pickerRightMargin,Top=0,Right=0,Bottom=0})
+                    row.wrapper:SetHeightOverride(height+16)
+                    row.mcLabel:SetVisibility(1)
+                    for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
+                    row.mcTable={content=content,scroll=scroll,height=height}
                 elseif setting.mcWrap then
                     -- A read-only value too long for DMM's picker: 13pt text in a wider
                     -- column, broken at commas below 34 characters; the row grows to fit.
@@ -666,6 +890,10 @@ function M.install(choices,controls,pages,options)
                     local text=dynamic(setting.mcLabelRule,self.model,setting.label)
                     if text~=row.mcLabelText then api.setText(row.mcLabel,text);row.mcLabelText=text end
                 end
+                if setting.mcDimValues then
+                    local dim=setting.mcDimValues[self.model.pending[i]]==true
+                    if row.mcDim~=dim then row.wrapper:SetRenderOpacity(dim and fadedOpacity or 1);row.mcDim=dim end
+                end
                 if row.mcNote then
                     -- The value moves up to make room while its choice has a note.
                     local note=setting.mcChoiceNotes[self.model.pending[i]]
@@ -692,7 +920,7 @@ function M.install(choices,controls,pages,options)
                     if tab.selected~=selected or tab.enabled~=enabled then
                         api.Theme.textColor(tab.label,selected and 'menuActive' or 'body')
                         tab.widget:SetIsEnabled(enabled)
-                        tab.widget:SetRenderOpacity((enabled or selected) and 1 or 0.45)
+                        tab.widget:SetRenderOpacity((enabled or selected) and 1 or fadedOpacity)
                         for _,bar in ipairs(tab.outline or {}) do
                             bar:SetBrushColor(selected and headerSeparatorBright or headerSeparatorDim)
                         end
@@ -927,13 +1155,24 @@ function M.install(choices,controls,pages,options)
                                 row.lastValue=value
                             end
                         end
+                        local area=row.mcText
+                        if area and (not area.polled or os.clock()-area.polled>=textArea.poll) then
+                            area.polled=os.clock()
+                            local lines,changed
+                            if area.source then lines,changed=area.source.poll() end
+                            if not area.shown or changed then
+                                api.setText(area.label,area.source and textArea.format(lines) or 'Unavailable.')
+                                area.scroll:ScrollToEnd()
+                                area.shown=true
+                            end
+                        end
                         for _,tab in ipairs(row.mcTabs or {}) do tab.hovered=tab.widget:IsHovered()==true end
                         for _,tab in ipairs(row.mcTabs or {}) do
                             local clicked
                             clicked,tab.pressed,tab.pointer=released(tab.widget,tab.pressed,tab.pointer,tab.hovered)
                             if clicked and tab.enabled then
                                 self:select(i,false);self.model:set(i,tab.value);self:refresh()
-                                if api.feedback then api.feedback('Change') end
+                                if adapted.feedback then adapted.feedback('Change') end
                                 return tick(self,queued,released,controller)
                             end
                         end
@@ -1020,9 +1259,10 @@ function M.install(choices,controls,pages,options)
                     api.need(parent:AddChild(index==1 and host or child.widget),'MCS page header child')
                         :SetPadding(child.padding)
                 end
+                -- The strip ends the header: the page's first entry sits headerGap below it.
                 if index==2 then
                     api.need(parent:AddChild(stripBox),'MCS header tabs slot')
-                        :SetPadding({Left=0,Top=0,Right=0,Bottom=0})
+                        :SetPadding({Left=0,Top=0,Right=0,Bottom=headerGap})
                 end
             end
             assert(statusPadding,'MCS page status placement')
@@ -1088,10 +1328,128 @@ function M.install(choices,controls,pages,options)
                         label.Slot:SetPadding({Left=row.wrapper and 0 or indent,
                             Top=4,Right=12,Bottom=4})
                         if provider and provider.mcBrowserHeading then api.setText(label,provider.name) end
+                        if provider and provider.mcBrowserLabel then api.setText(label,provider.mcBrowserLabel) end
                     end
                 end
             end
+            -- Each browser group (mcBrowserLine) is a header row, its heading followed by a
+            -- horizontal line, then its pages: a 'cell' page in a three-column grid on a faint
+            -- background, its name wrapping to two lines before it is cut off; a 'row' page on
+            -- a line of its own. A thin vertical line marks each line on its left. Hidden
+            -- pages keep their place in the list.
+            local HEAD,BAR,CELL,GAP,CELLS,WIDTH=160,20,180,8,3,584
+            local function frame(row,width,height)
+                local box=api.construct('/Script/UMG.Border',tree)
+                box:SetBrushColor(cycleBackground)
+                box:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
+                row.wrapper:SetWidthOverride(width);row.wrapper:SetHeightOverride(height)
+                api.need(box:SetContent(row.wrapper),'MCS mod-list cell background')
+                return box
+            end
+            local function rule(direction,height)
+                local box=api.construct('/Script/UMG.SizeBox',tree)
+                box:SetHeightOverride(height)
+                api.need(box:SetContent(api.Theme.image(tree,api.theme,direction,api)),'MCS mod-list group line')
+                return box
+            end
+            local function place(box,widget,padding)
+                api.need(box:AddChild(widget),'MCS mod-list cell'):SetPadding(padding or {Left=0,Top=0,Right=0,Bottom=0})
+            end
+            local function bar(box,height)
+                local line=rule('vertical',height);line:SetWidthOverride(BAR);place(box,line)
+            end
+            local function groupLines(head,members)
+                local lines,grid={},nil
+                local function line(height)
+                    local box=api.construct('/Script/UMG.HorizontalBox',tree)
+                    bar(box,height);lines[#lines+1]=box
+                    return box
+                end
+                for _,row in ipairs(members) do
+                    local label=row.widget:GetContent()
+                    row.mcFrame:RemoveFromParent()
+                    if providers[row.providerIndex].mcBrowserLine=='cell' then
+                        if not grid or grid.count==CELLS then grid={box=line(44),count=0} end
+                        grid.count=grid.count+1
+                        label:SetJustification(1);label:SetAutoWrapText(true)
+                        label.Slot:SetPadding({Left=8,Top=2,Right=8,Bottom=2})
+                        place(grid.box,row.mcFrame,{Left=0,Top=0,Right=GAP,Bottom=GAP})
+                    else
+                        grid=nil
+                        label.Slot:SetPadding({Left=12,Top=4,Right=12,Bottom=4})
+                        place(line(40),row.mcFrame,{Left=0,Top=0,Right=GAP,Bottom=GAP})
+                    end
+                end
+                return lines
+            end
+            -- Each group is one box in the list, rebuilt from its shown pages whenever the
+            -- filter changes, so a hidden page leaves no gap and an empty group disappears.
+            local function layoutGroup(group,shown)
+                group.box:ClearChildren()
+                local visible=shown(group.head)
+                group.box:SetVisibility(visible and 0 or 1)
+                if not visible then return end
+                place(group.box,group.header)
+                local members={}
+                for _,row in ipairs(group.members) do
+                    if shown(row) then members[#members+1]=row end
+                end
+                for _,line in ipairs(groupLines(group.head,members)) do place(group.box,line) end
+            end
+            local function lineBrowserRows(rows)
+                local groups,current={},nil
+                for _,row in ipairs(rows or {}) do
+                    local provider=providers[row.providerIndex]
+                    local line=row.wrapper and provider and provider.mcBrowserLine
+                    if line=='head' and not provider.mcBrowserHidden then
+                        current={head=row,members={}};groups[#groups+1]=current
+                    elseif (line=='cell' or line=='row') and current then
+                        if not provider.mcBrowserHidden then current.members[#current.members+1]=row end
+                    elseif line~='cell' and line~='row' then current=nil end
+                end
+                if #groups==0 then return end
+                -- Read and clear the list before any row moves into a group.
+                local scroll=assert(groups[1].head.wrapper:GetParent(),'MCS mod-list rows')
+                local children={}
+                for n=0,scroll:GetChildrenCount()-1 do
+                    local child=scroll:GetChildAt(n)
+                    local padding=child.Slot.Padding
+                    children[#children+1]={widget=child,padding={
+                        Left=padding.Left,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom}}
+                end
+                scroll:ClearChildren()
+                local heads,moved={},{}
+                for _,group in ipairs(groups) do
+                    heads[group.head.wrapper:GetFullName()]=group
+                    for _,row in ipairs(group.members) do
+                        moved[row.wrapper:GetFullName()]=true
+                        local cell=providers[row.providerIndex].mcBrowserLine=='cell'
+                        row.mcFrame=frame(row,cell and CELL or WIDTH-BAR-GAP,cell and 44 or 40)
+                    end
+                    local header=api.construct('/Script/UMG.HorizontalBox',tree)
+                    group.head.wrapper:SetWidthOverride(HEAD);place(header,group.head.wrapper)
+                    local line=rule('horizontal',2);line:SetWidthOverride(WIDTH-HEAD)
+                    api.need(header:AddChild(line),'MCS mod-list group header line'):SetVerticalAlignment(2)
+                    group.header=header
+                    group.box=api.construct('/Script/UMG.VerticalBox',tree)
+                end
+                for _,child in ipairs(children) do
+                    local name=child.widget:GetFullName()
+                    local group=heads[name]
+                    if group then
+                        api.need(scroll:AddChild(group.box),'MCS mod-list group'):SetPadding(child.padding)
+                    elseif not moved[name] then
+                        api.need(scroll:AddChild(child.widget),'MCS mod-list child'):SetPadding(child.padding)
+                    end
+                end
+                -- shown(row) (optional) says which rows the filter shows; all, by default.
+                function page:mcLayoutGroups(shown)
+                    for _,group in ipairs(groups) do layoutGroup(group,shown or function() return true end) end
+                end
+                page:mcLayoutGroups()
+            end
             styleBrowserRows(page.allRows)
+            lineBrowserRows(page.allRows)
             page.controls.mcHeaderHost=host
             page.controls.mcHeaderTitle=title
             page.controls.mcHeaderTabs=strip

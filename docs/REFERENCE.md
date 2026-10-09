@@ -35,7 +35,10 @@ notifications), `name`, optional `author`, `version`, `description`, `visible`,
 `manifest` with `configDirectory`, and at most one of `under` (an earlier page of
 the same contributor) or `attach` (a mod folder name). `link` makes a
 [slot link](#slot-rows) entry. `group='module'` puts the
-page in the ModCore browser group.
+page in the ModCore browser group and lists it on the ModCore page's Modules tab.
+`group='tool'` lists the page only on the ModCore page's Developer Tools tab, which
+opens it; the mod list does not show it. A tool page needs settings, as any page
+DMM opens does.
 
 Placement on every menu build:
 
@@ -174,8 +177,16 @@ return {contract=1,
     manifest=function(context) return settingsManifest end,           -- every menu build
     load=function(context) return {[settingId]=value} end,             -- optional
     apply=function(context,values,changes) return saved,warning end,   -- with load
+    action=function(context,id,value,values) end,                      -- optional
 }
 ```
+
+`action` runs whenever a navigation row (`mcNavigation=1`, not a page link) is
+set, even to its current value. A navigation tab row whose choices share one label,
+such as `PresetLabels=Play|Play` with `mcType=tab`, shows a single button that runs
+it on each press. `id` and `value` are that row's; `values` holds every row's
+current value by id, navigation rows included. An error is logged as
+`HOOK_ACTION_FAILED` (ERROR) and the page carries on.
 
 `context` is `{page=<page id>,directory=<configDirectory>}`. With `load` and
 `apply`, ModCoreSettings never reads or writes the page's config file: `load`
@@ -248,6 +259,46 @@ DMM's keyboard/controller navigation is retained.
 `mcWrap=1` on an `mcReadOnly=1` picker shows its value as 13pt left-aligned
 text in a wider column, broken after commas so no line reaches 34 characters;
 the row grows to fit its lines.
+
+`mcPlayerExists=1` on a setting or `[Category.*]` shows it only while a player is in
+the world (a player controller possessing a pawn); `mcPlayerExists=0` only while
+none is, as in the main menu. It works like a hidden Yes|No picker that follows the
+player, combined with any `VisibleWhen`, so a row keeps its own rule; rows whose
+`VisibleWhen` source it hides are hidden too. The check runs whenever DMM checks
+visibility: on opening the page and on each change. Pages without it never check.
+
+`mcSilent=1` on a setting or `[Category.*]` keeps DMM's interface sounds (hover,
+select, change) off its rows, as on rows that play sounds of their own.
+
+`mcDimValues=<value>|<value>` on a picker fades the whole row, label and value,
+to 45% opacity while its own value is one of those listed, the opacity of a
+disabled choice. Each value must be one of the picker's `PresetValues`. It is
+presentation only: the row stays enabled and its value saves as usual.
+
+`mcText=<source>` on an `mcReadOnly=1` picker replaces the row with a 360-pixel
+scrollable text area showing a text source the host provides, newest line at the
+bottom. While the row shows, the source is checked about once a second; new text
+scrolls the area to its end. An unknown source shows "Unavailable." The ModCore
+page's Errors tab uses the `errors` source: the latest 100 error lines of
+`UE4SS.log` (ModCore `ERROR`/`CRITICAL` messages, failed Lua calls, and lines
+mentioning an error, exception or stack traceback, with their stack traces).
+
+`mcTable=<code>:<text>|<code>:<text>|...` on an `mcReadOnly=1` picker replaces the
+row with a static table of pairs, such as `2192:→|25CF:●`. `mcColumns=<n>` (1–6,
+default 1) sets the columns, filled top to bottom. Codes are 12pt muted and texts
+18pt, each centred horizontally and vertically in a cell sized for the longest code
+or text plus 4 pixels of padding; each pair is centred in its column. Every line is
+40 pixels high, so columns stay level and texts line up whatever the codes' widths.
+A table taller than 360 pixels scrolls; 9 lines fit, such as 48 entries in 6
+columns.
+The code ends at the first `:`; neither part may contain `|`. Both are trimmed,
+non-empty and at most 8 characters; a table has at most 256 entries. A malformed
+table shows "Unavailable:" and the reason in its place; the page still loads. It
+cannot be combined with `mcText`, `mcWrap` or `mcType`, and `mcColumns` requires
+it. Like every read-only row it is never saved or marked dirty. Contributors can
+check their values offline with `menu_contributions.textTable(value, columns)`,
+which decodes them as ModCoreSettings does and raises on malformed input. A hooks
+page writes the fields into the manifest its `manifest()` returns.
 
 `mcChoiceNotes=<value>:<text>;<value>:<text>` on a picker gives choices a note,
 shown small and muted on a second line under the current choice, within DMM's
@@ -436,3 +487,9 @@ all targets to a named preset selects it automatically. Custom cannot be chosen
 directly. Apply and Restore clear the visual baseline.
 Apply and Restore remain DMM operations. Opening an inconsistent saved preset
 preserves its keys and changes the pending picker to Custom.
+
+## Module categories
+
+The Settings page's Modules tab provides Group modules (Yes/No) and Preferred Category valid with # modules (No/2/3). Apply saves [Modules] GroupModules (1/0) and PreferredCategoryMinimum (0/2/3) in config.ini. Defaults are Yes and 2. The next module browser build uses the applied values.
+
+ModCoreTemplates publishes categories per installed UE4SS mod folder. A category always remains available as fallback; mcCategory is preferred only when the required number of distinct available folders declare it. Child pages count once. No disables preferred categories; disabling grouping removes ordinary category headings. The foundation navigation remains together under ModCore. Unregistered folders and conflicting matches use Other or Specialized.

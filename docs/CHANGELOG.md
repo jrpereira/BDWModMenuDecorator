@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.0.2
+
+- Module browsing uses Gameplay, Content, Presentation, Technical & Support and
+  Other sections, with up to three declared categories, separate tags and inferred
+  parents. The MCS-owned file index replaces category shared variables; legacy
+  caches are reclassified without category aliases.
+- MCS identifies installed UE4SS mod folders at startup, caches their categories in
+  `cache/modules_register.json`, and supplies category grouping to the browser.
+  Identification errors leave the settings integration available.
+- `mcTable=<code>:<text>|...` with `mcColumns=1..6` shows static code and text
+  pairs in level, aligned columns, each part centred in an evenly padded cell;
+  `menu_contributions.textTable` checks them offline.
+- The ModCore page has Modules | Errors | Developer Tools tabs. Errors shows the
+  latest error lines of `UE4SS.log` in a scrollable area, newest at the bottom.
+- `mcText=<source>` shows a host text source in a scrollable area.
+- `mcSilent=1` keeps DMM's interface sounds off a row or category.
+- `mcDimValues=<value>|...` fades a picker's row while its value is one of those listed.
+- `mcPlayerExists=1|0` shows a row or category only while a player is, or is not,
+  in the world, alongside its `VisibleWhen`.
+- Page hooks may add `action(context,id,value,values)`, run when a navigation row
+  is set; a one-label navigation tab row is a single button that runs it.
+- ModCore Dev Tools is listed under Foundation Modules; Lua Event Bridge stays last.
+- Tabs keep at least 3 pixels between their label and each edge; a longer label
+  widens its own tab. Page headers leave 12 pixels before the first entry.
+- A read-only tab row whose choices share one label (such as No settings) is
+  sized and placed like an Open link.
+
 ## v1.0.1
 
 - `mcChoiceNotes` gives picker choices a small muted second line under the

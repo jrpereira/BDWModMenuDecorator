@@ -57,6 +57,12 @@ assert(byId['MCT.z'].path=='/mct/cache/mod_settings.ini' and byId['MCT.z'].setti
 assert(byId['MCT.z'].author=='MCT' and byId['MCT.z'].version=='')
 assert(byId['MCT.z'].mcManifest==manifest and byId['MCT'].mcManifest==nil,'pages carry their manifest in memory')
 assert(#logs==0,logs[1])
+-- A tool page never follows the mod it attaches to; ModCore grouping places it.
+local toolProviders={mod('Alpha'),mod('Zeta')}
+Pages.apply(toolProviders,{{id='MCD',pages={{id='MCD.sounds',name='Sounds Explorer',attach='Alpha',group='tool',
+    manifest=manifest,configDirectory='/d'}}}},parse,{},report)
+expect(toolProviders,'Alpha,MCD.sounds,Zeta','tool pages are sorted by name')
+assert(toolProviders[2].mcBrowserGroup=='tool' and toolProviders[2].mcBrowserIndent==nil)
 
 -- Rebuilds are idempotent; withdrawn contributions restore the placeholders they replaced.
 Pages.apply(providers,{mct},parse,state,report)
@@ -134,8 +140,9 @@ current={{id='MCT',pages={{id='MCT.module.Visual',name='Visual Example',attach='
     manifest=manifest,configDirectory='/v'}}}}
 local menu={mod('ModCoreControls','Controls'),mod('ModCoreSettings','Visuals'),placeholder('Visual'),mod('Zeta')}
 local built=api.build({},menu,nil,{})
-expect(built,'ModCore.browser.root,ModCoreControls,ModCoreSettings,MCT.module.Visual,Zeta','grouped')
-assert(built[4].mcBrowserIndent==20)
+-- A module page that declares no group, by a single author, lists under Various Authors.
+expect(built,'ModCore.browser.root,ModCoreControls,ModCoreSettings,ModCore.browser.group.various,MCT.module.Visual,Zeta','grouped')
+assert(built[5].mcBrowserIndent==20 and built[5].mcBrowserLine=='row' and built[5].mcFolder=='Visual')
 local failing={build=function(_,items) return items end}
 logs={}
 Pages.install(failing,parse,function() error('index unreadable') end,report)
@@ -169,6 +176,12 @@ Pages.install(slotApi,parse,function() return {slotted} end,report,controller,re
 local applied=function() end
 local passed=slotApi.build({},{mod('Host')},nil,{applied=applied,loadProvider=function(p) dmmLoads[#dmmLoads+1]=p.id end})
 assert(controller.inserts.Host.Visuals[1].settings[1]=='A' and controller.applied==applied)
+local versionApi={build=function(_,_,_,api) return api end}
+Pages.install(versionApi,parse,function() return {{id='MCT',pages={{id='MCT',name='T',version='1.0.2',visible=false},
+    {id='MCT.module.X',name='X',version='0.3.1'},{id='MCT.module.Y',name='Y'}}}} end,report)
+local versions=versionApi.build({},{},nil,{}).mcPageVersions
+assert(versions.MCT=='1.0.2' and versions['MCT.module.X']=='0.3.1' and versions['MCT.module.Y']==nil,
+    'every contributed page version reaches the inner build, hidden pages included')
 passed.loadProvider({id='Host'})
 assert(dmmLoads[1]=='Host' and loads[1].id=='Host' and loads[1].self==controller and loads[1].read==reader,
     'DMM loads the page first, then slots splice it')

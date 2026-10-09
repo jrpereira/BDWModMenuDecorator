@@ -111,10 +111,12 @@ local function widget()
     function w:SetHeightOverride(v) self.HeightOverride=v end
     function w:ClearHeightOverride() self.HeightOverride=nil;self.heightCleared=true end
     function w:SetMinDesiredHeight(v) self.MinDesiredHeight=v end
+    function w:SetMinDesiredWidth(v) self.MinDesiredWidth=v end
     function w:SetAutoWrapText(v) self.AutoWrapText=v end
     function w:SetBrushColor(v) self.BrushColor=v end
     function w:SetColorAndOpacity(v) self.colorAndOpacity=v;self.color=nil end
     function w:SetRenderTranslation(v) self.RenderTranslation=v end
+    function w:ScrollToEnd() self.scrolledToEnd=(self.scrolledToEnd or 0)+1 end
     return setmetatable(w,{__index=function(_,key)
         if key:match('^Set') or key=='ForceVolatile' or key=='ScrollToStart' or key=='ScrollWidgetIntoView' then return function() end end
     end})
@@ -179,7 +181,7 @@ local pages={build=function(tree,providers,status,a)
 end}
 local controls={build=function(tree,providers,a)
     local ui={root=widget(),panels={{rows={},headings={},scroll=widget()}},model={items=items,pending={0,0,0,1,49,-1},committed={0,0,0,1,49,-1}}}
-    ui.mcTestSetText=a.setText
+    ui.mcTestSetText,ui.mcTestFeedback=a.setText,a.feedback
     function ui.model:visibility() return {true,true,true,true,self.pending[1]==1,true} end
     function ui.root:SetActiveWidgetIndex() self.readyEvents=(self.readyEvents or 0)+1 end
     function ui.model:set(i,v) self.pending[i]=v end
@@ -226,7 +228,12 @@ local controls={build=function(tree,providers,a)
     function ui:select(i) self.current=i end
     return ui
 end}
-assert(M.install(choices,controls,pages,{keyColumn={key=96,keyOffset=408}}));assert(not M.install(choices,controls,pages))
+local textLines,textChanged,textPolls={},false,0
+local textSource={poll=function() textPolls=textPolls+1;return textLines,textChanged end}
+assert(M.install(choices,controls,pages,{keyColumn={key=96,keyOffset=408},textSources={errors=textSource},
+    textFormat=function(lines) return #lines==0 and 'None' or table.concat(lines,'\n') end,
+    textTable=require('menu_contributions').textTable}))
+assert(not M.install(choices,controls,pages))
 local browserProviders={
     {name='Templates',choices=items},
     {name='Menu Controls',choices=items,mcBrowserLevel=4,mcBrowserIndent=20},
@@ -289,6 +296,71 @@ assert(categoryLabel.Slot.Padding.Left==0
     and page.allRows[2].wrapper.Slot.Padding.Left==20
     and page.allRows[2].wrapper.WidthOverride==544,
     'Submodule button and highlight must both start at the browser indentation')
+-- A group: a header with a horizontal line, then barred lines of its pages; hidden and
+-- ungrouped rows keep their place.
+local lineProviders={
+    {name='Before',choices=items},
+    {name='ModCore',choices=items,mcBrowserLine='head'},
+    {name='Templates',choices=items,mcBrowserLine='cell',mcBrowserLabel='T  Templates',mcBrowserLevel=4,mcBrowserIndent=20},
+    {name='Visuals',choices=items,mcBrowserLine='cell',mcBrowserHidden=true,mcBrowserLevel=4,mcBrowserIndent=20},
+    {name='Controls',choices=items,mcBrowserLine='cell',mcBrowserLevel=4,mcBrowserIndent=20},
+    {name='Fangdango',choices=items,mcBrowserLine='cell',mcBrowserLevel=4,mcBrowserIndent=20},
+    {name='After',choices=items},
+}
+local linePage=pages.build(widget(),lineProviders,nil,api)
+local lineRows=linePage.allRows
+local list=lineRows[1].wrapper:GetParent()
+assert(#list.children==4 and list.children[1]==lineRows[1].wrapper and list.children[3]==lineRows[4].wrapper
+    and list.children[4]==lineRows[7].wrapper,'the group box replaces the head row; hidden and other rows keep their place')
+local group=list.children[2]
+local header,grid=group.children[1],group.children[2]
+assert(#group.children==2 and group.visible==0,'a group box holds its header and its lines')
+assert(#header.children==2 and header.children[1]==lineRows[2].wrapper and header.children[1].WidthOverride==160
+    and header.children[2].HeightOverride==2 and header.children[2].WidthOverride==424
+    and header.children[2]:GetContent() and header.children[2].Slot.VerticalAlignment==2,
+    'the header is the ModCore entry followed by a horizontal line')
+assert(#grid.children==4 and grid.children[1].HeightOverride==44 and grid.children[1].WidthOverride==20
+    and grid.children[1]:GetContent(),'a grid row starts with its vertical line')
+for n,index in ipairs({3,5,6}) do
+    local frame=grid.children[n+1]
+    assert(frame:GetContent()==lineRows[index].wrapper and frame.BrushColor and frame.BrushColor.A<0.2
+        and lineRows[index].wrapper.WidthOverride==180 and lineRows[index].wrapper.HeightOverride==44
+        and frame.Slot.Padding.Right==8,'pages fill three columns in order, each on a faint background')
+    local label=lineRows[index].widget:GetContent()
+    assert(label.AutoWrapText==true,'a grid name wraps to a second line before it is cut off')
+end
+-- A filter that hides a page closes its gap; one that hides the heading hides the group.
+linePage:mcLayoutGroups(function(row) return row~=lineRows[3] end)
+grid=group.children[2]
+assert(#group.children==2 and #grid.children==3 and grid.children[2]:GetContent()==lineRows[5].wrapper
+    and grid.children[3]:GetContent()==lineRows[6].wrapper,'the next pages move up into the hidden page\'s place')
+linePage:mcLayoutGroups(function(row) return row~=lineRows[2] end)
+assert(group.visible==1,'a hidden heading hides its whole group')
+linePage:mcLayoutGroups()
+assert(group.visible==0 and #group.children[2].children==4,'showing every page restores the grid')
+local fourProviders={{name='ModCore',choices=items,mcBrowserLine='head'}}
+for n=1,4 do fourProviders[#fourProviders+1]={name='Module '..n,choices=items,mcBrowserLine='cell'} end
+local fourGroup=pages.build(widget(),fourProviders,nil,api).allRows[1].wrapper:GetParent():GetParent()
+assert(#fourGroup.children==3 and #fourGroup.children[2].children==4 and #fourGroup.children[3].children==2,
+    'a fourth page starts the next grid row')
+assert(lineRows[3].widget:GetContent().text=='T  Templates','a short browser label replaces the page name')
+-- A 'row' page takes a whole line of its own after the grid; each group has its own header.
+local mixedProviders={{name='Bob',choices=items,mcBrowserLine='head'},
+    {name='Declared',choices=items,mcBrowserLine='cell'},
+    {name='A Very Long Mod Name Indeed',choices=items,mcBrowserLine='row'},
+    {name='Various Authors',choices=items,mcBrowserLine='head'},
+    {name='Solo',choices=items,mcBrowserLine='row'}}
+local mixedRows=pages.build(widget(),mixedProviders,nil,api).allRows
+local bob=mixedRows[1].wrapper:GetParent():GetParent()
+local various=mixedRows[4].wrapper:GetParent():GetParent()
+assert(#bob.children==3 and #various.children==2 and bob.parent==various.parent,
+    'each group is its own box: a header, then its lines')
+local rowLine=bob.children[3]
+assert(#rowLine.children==2 and rowLine.children[1].HeightOverride==40
+    and rowLine.children[2]:GetContent()==mixedRows[3].wrapper and mixedRows[3].wrapper.WidthOverride==556
+    and mixedRows[3].wrapper.HeightOverride==40 and not mixedRows[3].widget:GetContent().AutoWrapText,
+    'a row page is one line across the group')
+assert(various.children[2].children[2]:GetContent()==mixedRows[5].wrapper,'the next group lists its own pages')
 local ui=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
 ui.mcHeaderHost=widget()
 ui:show(1)
@@ -304,15 +376,17 @@ for _,tab in ipairs(row.mcTabs) do
     if tab.selected then selectedTabs=selectedTabs+1 end
 end
 assert(selectedTabs==1,'exactly one tab choice is selected')
-assert(row.mcTabs[1].box.WidthOverride+row.mcTabs[2].box.WidthOverride+4==440,
+assert(row.mcTabs[1].box.MinDesiredWidth+row.mcTabs[2].box.MinDesiredWidth+4==440,
     'outlined choices share the reserved width with a 4-pixel gap')
+assert(row.mcTabs[1].widget.WidgetStyle.NormalPadding.Left==4 and row.mcTabs[1].widget.WidgetStyle.PressedPadding.Right==4,
+    'an outlined tab keeps its label 3 pixels inside the 1-pixel outline')
 items[1].mcNavigation,items[1].mcLinkPage=true,'ModCoreControls'
 local linked=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
 linked.mcHeaderHost=widget()
 linked:show(1)
 assert(#linked.panels[1].rows[1].mcTabs==1
     and linked.panels[1].rows[1].mcTabs[1].label.text=='Consumables'
-    and linked.panels[1].rows[1].mcTabs[1].box.WidthOverride==160,
+    and linked.panels[1].rows[1].mcTabs[1].box.MinDesiredWidth==160,
     'page links must display one clickable tab')
 -- A link row's label wraps in its column and the row grows from a 40-pixel minimum.
 local linkRow=linked.panels[1].rows[1]
@@ -333,6 +407,67 @@ linked.panels[1].rows[1].mcTabs[1].widget.clicked=true
 linked:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(linked.model.linkActivated,'the single link tab must activate even at its default value')
 items[1].mcNavigation,items[1].mcLinkPage=nil,nil
+-- A read-only status whose choices share one label lines up with link rows: one 160-pixel
+-- button that cannot be pressed.
+local labels=items[1].labels
+items[1].mcReadOnly,items[1].labels=true,{}
+for n in ipairs(labels) do items[1].labels[n]='No settings' end
+local status=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
+status.mcHeaderHost=widget()
+status:show(1)
+local statusRow=status.panels[1].rows[1]
+assert(#statusRow.mcTabs==1 and statusRow.mcTabs[1].label.text=='No settings'
+    and statusRow.mcTabs[1].box.MinDesiredWidth==160 and statusRow.widget:GetParent().WidthOverride==584-160-24
+    and statusRow.mcTabs[1].enabled==false,
+    'a read-only one-label status shows one disabled button placed like a link')
+items[1].mcReadOnly,items[1].mcNavigation=nil,true
+for n in ipairs(labels) do items[1].labels[n]='Play' end
+local action=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
+action.mcHeaderHost=widget()
+action:show(1)
+local actionRow=action.panels[1].rows[1]
+assert(#actionRow.mcTabs==1 and actionRow.mcTabs[1].label.text=='Play' and actionRow.mcTabs[1].box.MinDesiredWidth==160
+    and actionRow.mcTabs[1].enabled==true,'a one-label navigation action shows one button that can be pressed')
+local actionSets=0
+local actionSet=action.model.set
+function action.model:set(index,value) actionSets=actionSets+1;return actionSet(self,index,value) end
+actionRow.mcTabs[1].widget.clicked=true
+action:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(actionSets==1,'pressing it sets the row, even to its current value')
+-- mcSilent keeps DMM's interface sounds off a row; other rows keep them.
+local sounds={}
+local soundApi={}
+for key,value in pairs(api) do soundApi[key]=value end
+soundApi.feedback=function(action) sounds[#sounds+1]=action end
+local click=function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end
+for _,silent in ipairs({false,true}) do
+    items[1].mcSilent=silent or nil
+    sounds={}
+    local page=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},soundApi)
+    page.mcHeaderHost=widget()
+    page:show(1)
+    page.panels[1].rows[1].mcTabs[1].widget.clicked=true
+    page:tick({},click,false)
+    -- DMM's own sounds follow the row it has just hovered or selected.
+    page.hovered=1;page.mcTestFeedback('Hover')
+    page.current=1;page.mcTestFeedback('Select')
+    page.current=nil;page.mcTestFeedback('Select')
+    assert(#sounds==(silent and 1 or 4),(silent and 'a silent row plays no interface sound' or 'a row plays its sounds'))
+end
+items[1].mcSilent=nil
+items[1].mcNavigation,items[1].labels=nil,labels
+-- mcDimValues fades the whole row while its own value is one of them.
+items[1].mcDimValues={[1]=true}
+local dimmed=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
+dimmed.mcHeaderHost=widget()
+dimmed:show(1)
+local dimRow=dimmed.panels[1].rows[1]
+assert(dimRow.wrapper.opacity==1,'a row whose value is not listed shows in full')
+dimmed.model.pending[1]=1;dimmed:refresh()
+assert(dimRow.wrapper.opacity==0.45,'a listed value fades the row')
+dimmed.model.pending[1]=0;dimmed:refresh()
+assert(dimRow.wrapper.opacity==1,'changing back restores it')
+items[1].mcDimValues=nil
 assert(row.mcTabs[1].label.Slot.HorizontalAlignment==0 and row.mcTabs[1].label.Slot.VerticalAlignment==2,
     'Tab labels must fill their allocated button slots for centered text justification')
 for _,tab in ipairs(row.mcTabs) do
@@ -443,6 +578,23 @@ assert(pickerHeader.model.pending[1]==items[1].values[2] and headerRow.mcTabs[2]
     'Clicking a header tab must select its choice')
 assert(headerRow.mcTabs[1].label.Font.Size==12 and headerTabs.children[2].HeightOverride==28,
     'Header tabs must use a compact 12-point font and 28-pixel height')
+assert(page.controls.mcHeaderTabs:GetParent().Slot.Padding.Bottom==12,
+    'the page header ends 12 pixels above its first entry')
+-- Tabs keep their share but a longer label widens its own tab, keeping 3 pixels each side.
+for n,tab in ipairs(headerRow.mcTabs) do
+    assert(tab.widget.WidgetStyle.NormalPadding.Left==3 and tab.widget.WidgetStyle.NormalPadding.Right==3
+        and headerTabs.children[2*n].MinDesiredWidth==110,'header tabs pad their labels by 3 pixels')
+end
+local longLabels=items[1].labels
+items[1].labels={longLabels[1],'Developer Tools And More'}
+local longHeader=controls.build(widget(),{{id='ModCoreControls',choices=items}},api)
+longHeader.mcHeaderHost,longHeader.mcHeaderTabs=widget(),widget()
+longHeader:show(1)
+local longRow=longHeader.panels[1].rows[1]
+local grown=longRow.mcHeaderTabsBox.children[4].MinDesiredWidth
+assert(longRow.mcHeaderTabsBox.children[2].MinDesiredWidth==110 and grown>=math.ceil(24*12*0.6)+6
+    and longRow.mcHeaderTabsWidth==110+grown+3,'a long header label widens only its own tab')
+items[1].labels=longLabels
 for n,bar in ipairs(headerRow.mcHeaderSeparators) do
     local bright=n==2 or n==3
     assert(#headerRow.mcHeaderSeparators==#items[1].values+1
@@ -472,6 +624,103 @@ referenceTabs[1].widget.clicked=true
 local before=readOnly.model.pending[1]
 readOnly:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(readOnly.model.pending[1]==before, 'Reference clicks cannot change the pending value')
+
+-- mcText shows a source's text in a scrollable area across the row, newest at the bottom.
+items[1].values,items[1].labels={0,1},{'Errors','Errors'}
+assert(not pcall(M.parse,'[Setting.Primary]\nId=Primary\nmcText=errors\n',items),'mcText requires a read-only row')
+assert(not pcall(M.parse,'[Setting.Primary]\nId=Primary\nmcReadOnly=1\nmcText=bad name\n',items))
+M.parse('[Setting.Primary]\nId=Primary\nmcReadOnly=1\nmcText=errors\n',items)
+local textPage=controls.build(widget(),{{choices=items}},api)
+textPage:show(1)
+local textRow=textPage.panels[1].rows[1]
+local area=assert(textRow.mcText,'an mcText row gets a text area')
+assert(area.scroll.children[1]==area.label and area.label.AutoWrapText and area.label.Font.Size==12
+    and area.scroll:GetParent().HeightOverride==360 and textRow.wrapper.HeightOverride==376
+    and textRow.mcLabel.visible==1 and not textRow.mcTabs,'the area replaces the row label and value')
+local noClick=function() return false,false,false end
+textPage:tick({},noClick,false)
+assert(area.label.text=='None' and area.scroll.scrolledToEnd==1 and textPolls==1,'the first tick shows the source')
+textPage:tick({},noClick,false)
+assert(textPolls==1,'the source is polled at most once a second')
+textLines,textChanged={'first error','second error'},true;area.polled=nil
+textPage:tick({},noClick,false)
+assert(area.label.text=='first error\nsecond error' and area.scroll.scrolledToEnd==2,
+    'new lines show at the bottom, scrolled into view')
+textChanged=false;area.polled=nil
+textPage:tick({},noClick,false)
+assert(textPolls==3 and area.scroll.scrolledToEnd==2,'unchanged text keeps the reader where they scrolled')
+textRow.visible=false;area.polled=nil
+textPage:tick({},noClick,false)
+assert(textPolls==3,'a hidden text area is not polled')
+M.parse('[Setting.Primary]\nId=Primary\nmcReadOnly=1\nmcText=missing\n',items)
+local unavailable=controls.build(widget(),{{choices=items}},api)
+unavailable:show(1);unavailable:tick({},noClick,false)
+assert(unavailable.panels[1].rows[1].mcText.label.text=='Unavailable.','an unknown source says so')
+M.parse('[Setting.Primary]\nId=Primary\nmcReadOnly=1\n',items)
+assert(items[1].mcText==nil,'a reparse without mcText clears it')
+print('PASS mcText shows a source in a scrollable area, newest at the bottom')
+
+-- mcTable shows static code and text pairs in columns filled top to bottom, every line
+-- the same height and every code the same width.
+local function tableManifest(fields) return '[Setting.Primary]\nId=Primary\n'..fields..'\n' end
+assert(not pcall(M.parse,tableManifest('mcTable=A:a'),items),'mcTable requires a read-only row')
+assert(not pcall(M.parse,tableManifest('mcReadOnly=1\nmcColumns=2'),items),'mcColumns requires mcTable')
+for _,other in ipairs({'mcText=errors','mcWrap=1','mcType=tab'}) do
+    assert(not pcall(M.parse,tableManifest('mcReadOnly=1\nmcTable=A:a\n'..other),items),other)
+end
+local glyphs={}
+for n=1,47 do glyphs[n]=string.format('%04X:%s',0x2190+n,utf8.char(0x2190+n)) end
+M.parse(tableManifest('mcReadOnly=1\nmcColumns=6\nmcTable='..table.concat(glyphs,'|')),items)
+local tablePage=controls.build(widget(),{{choices=items}},api)
+tablePage:show(1)
+local tableRow=tablePage.panels[1].rows[1]
+local grid=assert(tableRow.mcTable,'an mcTable row gets a table').content
+assert(#grid.children==6 and #grid.children[1].children==8 and #grid.children[6].children==7,
+    '47 entries in 6 columns fill 8 lines top to bottom')
+-- An 18pt Afacad line is 32 pixels; 4 pixels pad it above and below.
+local line=40
+assert(tableRow.mcTable.height==8*line and tableRow.wrapper.HeightOverride==8*line+16
+    and tableRow.mcTable.scroll:GetParent().HeightOverride==8*line,'the whole table shows without scrolling')
+assert(tableRow.mcLabel.visible==1 and not tableRow.mcTabs,'the table replaces the row label and value')
+local function centred(slot) return slot.HorizontalAlignment==2 and slot.VerticalAlignment==2 end
+for c,column in ipairs(grid.children) do
+    for row,box in ipairs(column.children) do
+        assert(box.HeightOverride==line and box.WidthOverride==math.floor(536/6) and centred(box.children[1].Slot),
+            'every line is the same height, its pair centred in the column')
+        local pair=box.children[1]
+        local codeBox,textBox=pair.children[1],pair.children[2]
+        -- 4 hex characters at 12pt are at most 4 x 2/3 x 16 pixels; one 18pt text 24.
+        assert(codeBox.WidthOverride==43+8 and textBox.WidthOverride==24+8,'cells fit their content plus the same padding')
+        assert(codeBox.HeightOverride==line and textBox.HeightOverride==line,'code and text cells are a full line tall')
+        local code,text=codeBox.children[1],textBox.children[1]
+        assert(centred(code.Slot) and centred(text.Slot),'code and text sit in the middle of their cells')
+        local n=(c-1)*8+row
+        assert(code.text==string.format('%04X',0x2190+n) and code.Font.Size==12 and code.color=='muted',
+            'codes are 12pt muted')
+        assert(text.text==utf8.char(0x2190+n) and text.Font.Size==18,'texts are 18pt')
+    end
+end
+-- A table taller than the text area scrolls.
+local tall={}
+for n=1,30 do tall[n]='C'..n..':x' end
+M.parse(tableManifest('mcReadOnly=1\nmcTable='..table.concat(tall,'|')),items)
+local tallPage=controls.build(widget(),{{choices=items}},api)
+tallPage:show(1)
+assert(tallPage.panels[1].rows[1].mcTable.height==360 and #tallPage.panels[1].rows[1].mcTable.content.children==1,
+    'one column by default, scrolling past 360 pixels')
+-- Malformed tables show why instead of the table; the page still builds.
+for _,case in ipairs({{'A:a|B','table entry 2 needs <code>:<text>'},{'A:a|','table entry 2 needs'},
+        {'ABCDEFGHI:a','table entry 1 exceeds 8 characters'},{'A:a\nmcColumns=7','mcColumns must be'},
+        {'A:a\nmcColumns=2.0','mcColumns must be'}}) do
+    M.parse(tableManifest('mcReadOnly=1\nmcTable='..case[1]),items)
+    local broken=controls.build(widget(),{{choices=items}},api)
+    broken:show(1)
+    local shown=broken.panels[1].rows[1].mcTable.content.text
+    assert(shown:find('^Unavailable: ') and shown:find(case[2],1,true),shown)
+end
+M.parse(tableManifest('mcReadOnly=1'),items)
+assert(items[1].mcTable==nil,'a reparse without mcTable clears it')
+print('PASS mcTable shows static pairs in level, aligned columns')
 
 for i=#items,1,-1 do items[i]=nil end
 for i,group in ipairs({'Before','AlsoBefore','After'}) do

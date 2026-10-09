@@ -206,3 +206,51 @@ local plain=Choices.open({id='Plain',choices={},testOnly=true})
 assert(not plain.error and plain.provider.id=='Plain','Pages without hooks keep DMM storage')
 assert(slots and Choices.open~=nil)
 print('PASS page hooks: validation, contract 3, loader, per-build manifests, storage and Apply')
+
+-- Actions: setting a navigation row, even to its current value, runs action() with that
+-- row and every row's value; stored rows and page links do not, and a failure is logged.
+sources['/m/badaction/hooks.lua']=function() return {contract=1,manifest=function() return '' end,action=7} end
+fails(function() load('/m/badaction/hooks.lua') end,'action() must be a function','action must be a function')
+local acted={}
+local actionManifest=mccHooks.manifest({page='MCC',directory='/mods/mcc'})..[[
+[Setting.MCC_Link]
+Id=MCC_Link
+Type=picker
+Label=Open
+PresetValues=0|1
+PresetLabels=Open|Open
+Default=0
+mcNavigation=1
+mcLinkPage=Other
+]]
+local function actionPage(hooks)
+    local copy={}
+    for key,value in pairs(page) do copy[key]=value end
+    copy.choices=Choices.parse(actionManifest)
+    copy.mcManifest,copy.mcHooks=actionManifest,hooks
+    -- Stored rows without storage hooks would need a DMM config file.
+    copy.testOnly=true
+    return copy
+end
+local action=function(context,id,value,values) acted[#acted+1]={context=context,id=id,value=value,values=values} end
+for _,hooks in ipairs({
+    {contract=1,manifest=mccHooks.manifest,action=action},
+    {contract=1,manifest=mccHooks.manifest,load=function() return {} end,apply=mccHooks.apply,action=action},
+}) do
+    acted={}
+    model=Choices.open(actionPage(hooks))
+    assert(not model.error,model.error)
+    model:set(3,0)
+    assert(#acted==1 and acted[1].id=='MCC_View' and acted[1].value==0 and acted[1].context.page=='MCC'
+        and acted[1].values.MCC_View==0 and acted[1].values.MCC_Mode==model.pending[1],
+        'setting a navigation row, even to its value, runs action() with every value')
+    assert(model.items[4].id=='MCC_Link')
+    model:set(3,1);model:set(1,2);model:set(4,0)
+    assert(#acted==2 and acted[2].value==1,'stored rows and page links run no action')
+end
+logs={}
+model=Choices.open(actionPage({contract=1,manifest=mccHooks.manifest,action=function() error('no sound') end}))
+model:set(3,1)
+assert(model.pending[3]==1 and #logs==1 and logs[1]:find('HOOK_ACTION_FAILED MCC MCC_View: ',1,true)
+    and logs[1]:find('no sound',1,true),'a failing action is logged and the row still changes')
+print('PASS page hooks: navigation rows run the action hook')

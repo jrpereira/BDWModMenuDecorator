@@ -100,15 +100,26 @@ assert(not displayPlan.content:find('Reference',1,true),'references never receiv
 local visualFile=assert(io.open('mod_settings.ini','rb'))
 local visuals=visualFile:read('*a');visualFile:close()
 local visualItems=Choices.parse(visuals)
-assert(#visualItems==5)
-for _,item in ipairs(visualItems) do assert(item.mcNavigation and not item.file) end
-local visualProvider={id='ModCoreSettings',path='mod_settings.ini',choices=visualItems}
+assert(#visualItems==8)
+local byId={}
+for index,item in ipairs(visualItems) do
+    byId[item.id]=index
+    if item.id=='MCS_GroupModules' or item.id=='MCS_PreferredCategoryMinimum' then
+        assert(not item.mcNavigation and item.file=='config.ini' and item.section=='Modules')
+    else assert(item.mcNavigation and not item.file) end
+end
+local mcsPath='/mods/1_ModCore_Settings/config.ini'
+files[mcsPath]='[Modules]\nGroupModules=1\nPreferredCategoryMinimum=2\n'
+local visualProvider={id='ModCoreSettings',path='/mods/1_ModCore_Settings/mod_settings.ini',choices=visualItems}
 local visualModel=Choices.open(visualProvider)
 assert(not visualModel.error and not visualModel:dirty())
-visualModel:set(1,0);visualModel:set(4,2)
-assert(not visualModel:dirty() and visualModel.pending[1]==0 and visualModel.pending[4]==2)
+visualModel:set(byId.MCS_Page,2);visualModel:set(byId.MCS_HighlightedModules,0)
+assert(not visualModel:dirty(),'page selection and preview settings remain transient')
+visualModel:set(byId.MCS_GroupModules,0)
+assert(visualModel:dirty() and visualModel:apply(),'grouping preference is applied durably')
 local reopened=Choices.open(visualProvider)
-assert(not reopened.error and reopened.pending[1]==1 and reopened.pending[4]==0)
-assert(InitConfig.plan(visualProvider,visuals,Choices,Choices.fs,visualItems)==nil,
-    'Visuals preview must not create a config file')
-print('Navigation and Visuals pickers remain transient without config writes')
+assert(not reopened.error and reopened.pending[byId.MCS_Page]==0 and reopened.pending[byId.MCS_HighlightedModules]==1
+    and reopened.pending[byId.MCS_GroupModules]==0 and reopened.pending[byId.MCS_PreferredCategoryMinimum]==2)
+assert(not files[mcsPath]:find('MCS_Page',1,true) and not files[mcsPath]:find('Highlighted',1,true),
+    'navigation and preview keys are not written beside module preferences')
+print('PASS navigation remains transient and module grouping preferences persist after Apply')

@@ -32,3 +32,15 @@ cancellation, Apply, Restore, Reset, reopening and restart persistence. Check
 slot navigation and the consuming mod's behavior separately.
 Fixtures simulate the Unreal UI boundary; they do not establish native widget
 behavior or compatibility with a different DMM layout.
+
+## Module identification
+
+`python3 tools/build_mod_fingerprints.py` generates the runtime identity database,
+expanded JSON catalog, taxonomy tables and Unicode normalizer from `data/mod_fingerprints.json`
+and `data/mod_categories.json`. Packaging regenerates these outputs automatically.
+
+The `mod_registry_test.lua`, `module_patterns_test.lua` and `startup_test.lua`
+suites cover matching, boot cache ownership, file index handoff and failure
+isolation. `python3 -m unittest discover -s tests -p 'test_classifiers.py'` checks
+comparison reporting. See [Module categories](MODULE_CATEGORIES.md) for cache and
+matching behavior. Verify the first scan, cached restart and browser grouping in game.

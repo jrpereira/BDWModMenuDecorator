@@ -3,7 +3,7 @@ local source=debug.getinfo(1,'S').source:gsub('^@','')
 -- Files shared with other modules, unchanged, keep their own module names. Searched first,
 -- so a copy left in Scripts by an earlier release is never loaded instead.
 local scripts=source:match('^(.*)[/\\][^/\\]+$')
-if scripts then package.path=scripts..'/vendor/?.lua;'..package.path end
+if scripts then package.path=scripts..'/vendor/?.lua;'..scripts..'/?.lua;'..package.path end
 local Bootstrap=require('dmm_bootstrap')
 -- The level comes from log_level.txt in the mod folder; WARN without it.
 local root=source:match('^(.*)[/\\]Scripts[/\\][^/\\]+$')
@@ -19,4 +19,12 @@ local function initialize()
     logger.info(VERSION,' ready')
     return true
 end
+-- Identify installed folders in MCS's state before DMM builds its module browser.
+local mods=root and root:match('^(.*)[/\\][^/\\]+$')
+local scanned,scanError=pcall(function()
+    require('mcs_mod_registry').boot(root,mods,IterateGameDirectories,{
+        report=function(folder,why) log('MODULE_IDENTIFICATION_SKIPPED',folder..': '..why) end,
+    })
+end)
+if not scanned then log('MODULE_IDENTIFICATION_FAILED',tostring(scanError)) end
 Bootstrap.run(log,initialize)
