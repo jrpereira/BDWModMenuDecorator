@@ -23,6 +23,7 @@
     "nexus": "https://www.nexusmods.com/thebloodofdawnwalker/mods/590"
   },
   "browser": {
+    "preferred": "ModCore",
     "categories": [
       "interface",
       "frameworks"

@@ -1,40 +1,40 @@
--- Arrange ModCore providers as a browser tree before DMM builds its rows.
+-- Arrange the mod browser into groups before DMM builds its rows. Every mod follows the
+-- same rules: a valid collection (browser.preferred shared by enough mods) lists it
+-- there only; otherwise it is listed under each top category its categories belong to.
 local M = {}
-local ROOT_ID = 'ModCore.browser.root'
-
--- Every foundation module is listed; one without a page to open shows as having no settings.
-local FOUNDATION = {
-    {id='ModCoreControls', name='ModCore Controls'},
-    {id='ModCoreSettings', name='ModCore Settings'},
-    {id='ModCoreTemplates', name='ModCore Templates'},
-    {id='ModCoreDevelopers', name='ModCore Dev Tools'},
-    {id='UE4SSLuaEventBridge', name='Lua Event Bridge'},
-}
-
--- The pages listed beside the ModCore entry in the browser, in order, with their short
--- labels. A module page shows its own icon (mcBrowserIcon) before its name.
-local CORE = {
-    {id='ModCoreTemplates', label='⌗  Templates'},
-    {id='ModCoreControls', label='❖  Controls'},
-    {id='ModCoreSettings', label='☑  Settings'},
-}
 
 local GROUP_PREFIX = 'ModCore.browser.group.'
 local VARIOUS = 'Various Authors'
+-- The page that carries the index tabs (Installed, Errors, Developer Tools): MCS's own.
+local HOST = 'ModCoreSettings'
+-- The MCS_Page values of those tabs, after the page's own three.
+local TABS = {installed=3, errors=4, tools=5}
+local COLLECTION_ICON = '⁂'
+-- Top category icons by id, until the taxonomy data carries them.
+local TOP_ICONS = {gameplay='▶', content='◆', presentation='○', support='□', auxiliary='□',
+    other='…', unclassified='…'}
 
-local function heading(id, name, level, indent, description)
-    return {id=id, name=name, author='ModCore', version='',
-        description=description or name .. ' groups related ModCore pages.',
+-- A group heading: its icon, a small line naming the kind of group, and its title.
+local function heading(key, title, kind, icon)
+    return {id=GROUP_PREFIX .. key, name=title, author='', version='',
+        description=kind and kind ~= '' and kind .. ': ' .. title or title,
         choices={}, settingsCount=0, testOnly=false, noSettings=true, mcBrowserHeading=true,
-        mcBrowserLevel=level, mcBrowserIndent=indent}
+        mcBrowserKind=kind, mcBrowserIcon=icon, mcBrowserLevel=2, mcBrowserIndent=0}
 end
 
--- The ModCore page: a Modules tab linking to each module's page, an Errors tab, and a
--- Developer Tools tab.
--- Every row is navigation, so the page owns no config file. openable[id] marks the pages
--- a link can open, or names the slot a link page opens; versions[id] (optional) is shown
--- after a module's name.
--- tools lists the developer tool pages (group='tool'), which open only from here.
+-- The entry that folds a group's mods without settings; selecting it lists them.
+local function more(key, count)
+    return {id=GROUP_PREFIX .. key .. '.more', name='… and ' .. count .. ' more with no settings',
+        author='', version='', description='Show the ' .. count .. ' mods in this group that have no settings.',
+        choices={}, settingsCount=0, choicesLoaded=true, deferred=false, testOnly=false,
+        mcBrowserMore=key}
+end
+
+-- The index tabs' sections, appended to the host page's manifest. Every row is navigation
+-- or read-only, so the tabs own no config. openable[id] marks the pages a link can open,
+-- or names the slot a link page opens; versions[id] (optional) follows a module's name.
+-- modules lists the installed ModCore modules; tools the developer tool pages
+-- (group='tool'), which open only from here.
 function M.manifest(openable, modules, versions, tools)
     versions = versions or {}
     local lines = {}
@@ -43,22 +43,19 @@ function M.manifest(openable, modules, versions, tools)
         for _, field in ipairs(fields) do lines[#lines + 1] = field[1] .. '=' .. tostring(field[2]) end
         lines[#lines + 1] = ''
     end
-    local function label(text) return (tostring(text):gsub('[|;%c]', ' ')) end
-    block('Mod', {{'Id', ROOT_ID}, {'Name', 'ModCore'}})
-    block('Category.Pages', {{'mcHeading', 0}})
-    block('Setting.ModCore_Page', {{'Id', 'ModCore_Page'}, {'Label', 'Page'}, {'Group', 'Pages'},
-        {'Type', 'picker'}, {'Default', 0}, {'PresetValues', '0|1|2'},
-        {'PresetLabels', 'Modules|Errors|Developer Tools'}, {'mcNavigation', 1}, {'mcHeading', 'true'}})
+    local function label(text) return (tostring(text):gsub('[|;%c%[%]]', ' ')) end
     local count = 0
-    local function section(group, list, tab)
-        if #list == 0 then return end
-        -- A tab of its own (tab, the Page value) needs no heading repeating the tab's name.
-        local fields = {{'VisibleWhen', 'ModCore_Page'}, {'VisibleValues', tab or 0}}
-        if tab then fields[3] = {'mcHeading', 0} end
-        block('Category.' .. group, fields)
+    local function section(group, list, tab, empty)
+        block('Category.' .. group, {{'VisibleWhen', 'MCS_Page'}, {'VisibleValues', tab}, {'mcHeading', 0}})
+        if #list == 0 then
+            block('Setting.MCS_Index_Empty_' .. tab, {{'Id', 'MCS_Index_Empty_' .. tab}, {'Label', group},
+                {'Group', group}, {'Type', 'picker'}, {'Default', 0}, {'PresetValues', '0|1'},
+                {'PresetLabels', empty .. '|' .. empty}, {'mcReadOnly', 1}, {'mcType', 'tab'}})
+            return
+        end
         for _, entry in ipairs(list) do
             count = count + 1
-            local id = 'ModCore_Module_' .. count
+            local id = 'MCS_Index_' .. count
             local version = versions[entry.id]
             local name = version and entry.name .. ' v' .. version or entry.name
             local fields = {{'Id', id}, {'Label', label(name)}, {'Group', group},
@@ -76,58 +73,20 @@ function M.manifest(openable, modules, versions, tools)
             block('Setting.' .. id, fields)
         end
     end
-    local user, foundation = {}, {}
-    for _, provider in ipairs(modules) do user[#user + 1] = {id=provider.id, name=provider.name} end
-    for _, entry in ipairs(FOUNDATION) do foundation[#foundation + 1] = entry end
-    section('User Modules', user)
-    section('Foundation Modules', foundation)
+    section('Installed', modules, TABS.installed, 'None installed')
     -- The latest error lines of UE4SS.log, newest at the bottom (the host's 'errors' source).
-    block('Category.Errors', {{'VisibleWhen', 'ModCore_Page'}, {'VisibleValues', 1}, {'mcHeading', 0}})
-    block('Setting.ModCore_Errors', {{'Id', 'ModCore_Errors'}, {'Label', 'Errors'}, {'Group', 'Errors'},
+    block('Category.Errors', {{'VisibleWhen', 'MCS_Page'}, {'VisibleValues', TABS.errors}, {'mcHeading', 0}})
+    block('Setting.MCS_Index_Errors', {{'Id', 'MCS_Index_Errors'}, {'Label', 'Errors'}, {'Group', 'Errors'},
         {'Type', 'picker'}, {'Default', 0}, {'PresetValues', '0|1'}, {'PresetLabels', 'Errors|Errors'},
         {'mcReadOnly', 1}, {'mcText', 'errors'}})
-    local listed = {}
-    for _, provider in ipairs(tools or {}) do listed[#listed + 1] = {id=provider.id, name=provider.name} end
-    if #listed > 0 then section('Developer Tools', listed, 2)
-    else
-        block('Category.Developer Tools', {{'VisibleWhen', 'ModCore_Page'}, {'VisibleValues', 2}, {'mcHeading', 0}})
-        block('Setting.ModCore_NoTools', {{'Id', 'ModCore_NoTools'}, {'Label', 'Developer Tools'},
-            {'Group', 'Developer Tools'}, {'Type', 'picker'}, {'Default', 0}, {'PresetValues', '0|1'},
-            {'PresetLabels', 'None installed|None installed'}, {'mcReadOnly', 1}, {'mcType', 'tab'}})
-    end
+    section('Developer Tools', tools or {}, TABS.tools, 'None installed')
     return table.concat(lines, '\n')
 end
 
--- parse(manifest) (optional) turns the ModCore heading into its page; without it, or if the
--- page cannot be built, the heading stays a plain group heading.
--- A module's version: its listed page's, else its contributed page's (pageVersions, hidden
--- pages included), else read by folderVersion(folder) from the folder of the detected mod
--- whose folder name ends with the module id.
-function M.versions(ids, providers, pageVersions, folderVersion)
-    local function clean(value)
-        if type(value) ~= 'string' then return nil end
-        value = value:match('^%s*[vV]?(%d[%w%.%-%+]*)%s*$')
-        return value and #value <= 32 and value or nil
-    end
-    local byId = {}
-    for _, provider in ipairs(providers) do byId[provider.id] = provider end
-    local result = {}
-    for _, id in ipairs(ids) do
-        local version = clean(byId[id] and byId[id].version) or clean((pageVersions or {})[id])
-        if not version and folderVersion then
-            local suffix = id:lower()
-            for _, provider in ipairs(providers) do
-                local folder = provider.detectedKind == 'ue4ss' and tostring(provider.mcFolder or provider.name or '') or ''
-                if folder:lower():sub(-#suffix) == suffix then
-                    local ok, value = pcall(folderVersion, folder)
-                    version = ok and clean(value) or nil
-                    break
-                end
-            end
-        end
-        result[id] = version
-    end
-    return result
+local function clean(value)
+    if type(value) ~= 'string' then return nil end
+    value = value:match('^%s*[vV]?(%d[%w%.%-%+]*)%s*$')
+    return value and #value <= 32 and value or nil
 end
 
 -- A reader for a mod folder's version under mods (the Mods folder, ending in a separator):
@@ -152,9 +111,9 @@ function M.folderVersion(mods, open)
 end
 
 -- A reader for a mod folder's mod.json fields under mods (the Mods folder, ending in a
--- separator): group, its browser group; settings, false when the mod has none to show; and
--- name, author, version, icon and description, read before any dependencies list.
--- open defaults to io.open.
+-- separator): group, its browser group; settings, false when the mod has none to show;
+-- name, author, version, icon and description, read before any dependencies list; and
+-- requires, the set of dependency ids. open defaults to io.open.
 function M.folderManifest(mods, open)
     if type(mods) ~= 'string' then return nil end
     open = open or io.open
@@ -171,27 +130,13 @@ function M.folderManifest(mods, open)
             return value and #value <= limit and value or nil
         end
         local fields = {group=text('group', 64), name=text('name', 200), author=text('author', 120),
-            version=text('version', 64), icon=text('icon', 16), description=text('description', 4096)}
+            version=text('version', 64), icon=text('icon', 16), description=text('description', 4096),
+            requires={}}
         if json:match('"settings"%s*:%s*false') then fields.settings = false end
+        local dependencies = json:match('"dependencies"%s*:%s*(%b[])')
+        for id in (dependencies or ''):gmatch('"id"%s*:%s*"([^"\\%c]+)"') do fields.requires[id] = true end
         return fields
     end
-end
-
-local function root(openable, modules, tools, parse, report, versions)
-    if parse then
-        local ok, result = pcall(function()
-            local manifest = M.manifest(openable, modules, versions, tools)
-            local choices = parse(manifest)
-            return {id=ROOT_ID, name='ModCore', author='ModCore', version='',
-                description='ModCore modules and developer tools.',
-                authorURL='', modURL='', logoFile='', logoAsset='', testOnly=false,
-                choices=choices, settingsCount=#choices, choicesLoaded=true, deferred=false,
-                mcManifest=manifest, mcBrowserLevel=2, mcBrowserIndent=0}
-        end)
-        if ok then return result end
-        if report then report('BROWSER_ROOT_FAILED', result) end
-    end
-    return heading(ROOT_ID, 'ModCore', 2, 0)
 end
 
 local function trimmed(value)
@@ -208,28 +153,46 @@ local function folderOf(provider)
     return path and path:match('([^/]+)/[^/]+$')
 end
 
--- Whether a folder (named <prefix><id>) holds a foundation module.
-local function foundationFolder(folder)
-    if type(folder) ~= 'string' then return false end
-    for _, entry in ipairs(FOUNDATION) do
-        if folder:lower():sub(-#entry.id) == entry.id:lower() then return true end
-    end
-    return false
+-- "A", "A and B", "A, B and C"; join is the last separator's word.
+local function joined(list, join)
+    if #list <= 1 then return list[1] end
+    return table.concat(list, ', ', 1, #list - 1) .. ' ' .. (join or 'and') .. ' ' .. list[#list]
 end
 
--- Every page is listed in a group: ModCore first, then each group of several mods (its
--- mod.json group, else its author) in name order, then Various Authors, one mod per row.
--- options.pageVersions and options.folderVersion (optional): see M.versions.
--- options.folderManifest(folder) (optional): see M.folderManifest.
+-- Appends the index tabs to the host page's manifest on each build. Returns whether the
+-- host now carries them.
+local function extend(host, openable, modules, versions, tools, parse, read, report)
+    if not host or not parse or not read then return false end
+    local ok, err = pcall(function()
+        if host.mcBaseManifest == nil then
+            host.mcBaseManifest = assert(host.mcManifest or read(host.path), 'host page manifest unreadable')
+                :gsub('^\239\187\191', '')
+        end
+        local manifest = host.mcBaseManifest:gsub('%s*$', '') .. '\n\n' .. M.manifest(openable, modules, versions, tools)
+        local choices = parse(manifest)
+        host.choices, host.settingsCount, host.mcManifest = choices, #choices, manifest
+        host.choicesLoaded, host.deferred = true, false
+    end)
+    if not ok and report then report('BROWSER_INDEX_FAILED', tostring(err)) end
+    return ok
+end
+
+-- Every listed mod lands in groups: valid collections, then top categories in taxonomy
+-- order (or, without a taxonomy, each mod.json group or author shared by several mods),
+-- then Various Authors. Within a group, mods with settings come first, walked by
+-- category in taxonomy order and then load order; mods without settings fold into a
+-- final entry that lists them when selected.
+-- options: folderManifest(folder), folderVersion(folder), pageVersions, categoryRegister,
+-- taxonomy, preferredMinimum, groupModules, read(path) (to extend the host page).
 function M.arrange(providers, parse, report, options)
     options = options or {}
-    local corePages, modules, tools, others = {}, {}, {}, {}
-    local seen, core = {}, {}
-    for _, entry in ipairs(CORE) do core[entry.id] = true end
-    local children, contributions = {}, {}
+    local listed, tools, seen = {}, {}, {}
+    local host
+    local parentOf = {}
+    local lastParent
     for _, provider in ipairs(providers) do
         local id = provider.id
-        if id ~= ROOT_ID and tostring(id):sub(1, #GROUP_PREFIX) ~= GROUP_PREFIX and seen[id]~=provider then
+        if tostring(id):sub(1, #GROUP_PREFIX) ~= GROUP_PREFIX and seen[id] ~= provider then
             assert(not seen[id], 'duplicate browser provider: ' .. tostring(id))
             seen[id] = provider
             -- A page listed under another (indented by its contributor) stays with it.
@@ -238,28 +201,18 @@ function M.arrange(providers, parse, report, options)
             end
             if provider.mcListGroup == nil then
                 local folder = folderOf(provider)
-                local fields, foundationName = {}, nil
+                local fields = {}
                 if folder and options.folderManifest then
                     local ok, read = pcall(options.folderManifest, folder)
                     fields = ok and type(read) == 'table' and read or {}
                 end
-                -- A detected folder of a foundation module (named <prefix><id>) is ModCore's,
-                -- and has no settings of its own to show.
-                if provider.detectedKind == 'ue4ss' and type(folder) == 'string' then
-                    for _, entry in ipairs(FOUNDATION) do
-                        if folder:lower():sub(-#entry.id) == entry.id:lower() then
-                            foundationName = entry.name
-                            if fields.group == nil then fields.group = 'ModCore' end
-                            if fields.settings == nil then fields.settings = false end
-                        end
-                    end
-                end
                 provider.mcListGroup = trimmed(fields.group) or false
+                provider.mcRequires = fields.requires or {}
+                provider.mcFolderAuthor = trimmed(fields.author)
                 -- A mod that declares it has no settings is not listed as incompatible.
                 provider.mcNoSettingsDeclared = fields.settings == false and provider.noSettings or nil
                 -- A mod found on disk, or a contributed page standing in for one, takes its
-                -- details from its folder: its mod.json, else a foundation module's name and
-                -- the folder's version.
+                -- details from its folder: its mod.json, else the folder's version.
                 if (provider.detectedKind or provider.mcModuleEntry) and folder then
                     provider.mcFolder = provider.mcFolder or folder
                     local version
@@ -267,7 +220,7 @@ function M.arrange(providers, parse, report, options)
                         local ok, value = pcall(options.folderVersion, folder)
                         version = ok and trimmed(value) or nil
                     end
-                    provider.name = fields.name or foundationName or provider.name
+                    provider.name = fields.name or provider.name
                     provider.author = fields.author or provider.author
                     provider.version = fields.version or version or provider.version
                     provider.mcBrowserIcon = fields.icon or provider.mcBrowserIcon
@@ -277,183 +230,255 @@ function M.arrange(providers, parse, report, options)
                     elseif fields.description then provider.description = fields.description end
                 end
             end
-            local foundation = core[id]
-            local group = provider.mcBrowserGroup
-            -- A mod whose mod.json puts it in the ModCore group is a ModCore module, unless
-            -- it is a foundation module.
-            if group == nil and provider.mcListGroup == 'ModCore'
-                and (provider.detectedKind or provider.mcModuleEntry) and not foundationFolder(folderOf(provider)) then
-                group = 'module'
-            end
-            local child = not foundation and group == nil and provider.mcBrowserChild
-                and contributions[provider.mcContribution]
-            if foundation and provider.mcContribution then contributions[provider.mcContribution] = true end
-            if child then children[#children + 1] = provider
-            elseif foundation then corePages[id] = provider
-            elseif group == 'tool' then tools[#tools + 1] = provider
+            if id == HOST then host = provider end
+            if provider.mcBrowserGroup == 'tool' then tools[#tools + 1] = provider
+            elseif provider.mcBrowserChild and lastParent then
+                parentOf[provider] = lastParent
+                lastParent.mcChildren = lastParent.mcChildren or {}
+                lastParent.mcChildren[#lastParent.mcChildren + 1] = provider
             else
-                if group == 'module' then modules[#modules + 1] = provider end
-                others[#others + 1] = provider
+                provider.mcChildren = nil
+                listed[#listed + 1] = provider
+                lastParent = provider
             end
         end
     end
-    -- Each remaining page's group; a page listed under another takes its group.
-    local named, order, various, members = {}, {}, {}, {}
-    local register=options.categoryRegister
-    local preferredCounts,folderSeen={},{}
+    -- Children are re-collected each build.
+    for _, provider in ipairs(listed) do
+        if provider.mcChildren then
+            local kept = {}
+            for _, child in ipairs(provider.mcChildren) do if parentOf[child] == provider then kept[#kept + 1] = child end end
+            provider.mcChildren = kept
+        end
+    end
+    local order = {}
+    for index, provider in ipairs(listed) do order[provider] = index end
+    local register, taxonomy = options.categoryRegister, options.taxonomy
+    local default = {categories={'other'}, parents={'other'}, tags={}}
+    local function entryOf(provider)
+        local folder = folderOf(provider)
+        return register and folder and register[folder] or default
+    end
+    -- A collection forms when enough distinct folders prefer it. A preferred main
+    -- category or category is not a collection: it counts as declared first.
+    local preferredCounts, folderSeen = {}, {}
     if register then
-        for _,provider in ipairs(others) do
-            local folder=folderOf(provider)
-            local entry=folder and register[folder]
-            if entry and entry.preferred and not folderSeen[folder] then
-                folderSeen[folder]=true
-                preferredCounts[entry.preferred]=(preferredCounts[entry.preferred] or 0)+1
+        for _, provider in ipairs(listed) do
+            local folder = folderOf(provider)
+            local entry = folder and register[folder]
+            if entry and entry.preferred and not folderSeen[folder]
+                and not (taxonomy and taxonomy.definitions[entry.preferred]) then
+                folderSeen[folder] = true
+                preferredCounts[entry.preferred] = (preferredCounts[entry.preferred] or 0) + 1
             end
         end
     end
-    -- A mod that declares its group sits in the group's grid; any other takes a whole row,
-    -- as its name may be long.
-    local taxonomy=options.taxonomy
-    local parentKeys,parentDeclared
-    local declared={}
-    local counted={};local moduleCount=0
-    for _,provider in ipairs(others) do
-        provider.mcTaxonomyEntry=nil
-        local folder=folderOf(provider) or provider.id
-        if not counted[folder] then counted[folder]=true;moduleCount=moduleCount+1 end
-        local keys
-        if provider.mcBrowserChild and parentKeys then keys=parentKeys
-        else
-            if taxonomy then
-                local entry=register and register[folder] or {categories={'other'},parents={'other'},tags={}}
-                provider.mcTaxonomyEntry=entry
-                keys=taxonomy:parents(entry.categories)
-                local minimum=options.preferredMinimum or 2
-                if minimum>0 and entry.preferred and (preferredCounts[entry.preferred] or 0)>=minimum then
-                    if taxonomy.definitions[entry.preferred] then keys=taxonomy:parents({entry.preferred})
-                    else keys={'preferred:'..entry.preferred} end
-                end
-                parentDeclared=false
-                if options.groupModules==false then keys={false} end
+    local minimum = options.preferredMinimum or 2
+    local groups, byKey = {}, {}
+    local function group(key, title, kind, icon, cells)
+        local found = byKey[key]
+        if not found then
+            found = {key=key, title=title, kind=kind, icon=icon, cells=cells, members={}, has={}}
+            byKey[key] = found
+            groups[#groups + 1] = found
+        end
+        return found
+    end
+    local function join(found, provider)
+        if not found.has[provider] then found.has[provider] = true;found.members[#found.members + 1] = provider end
+    end
+    local collections, sections, plain = {}, {}, {}
+    local moduleCount, counted = 0, {}
+    for _, provider in ipairs(listed) do
+        local folder = folderOf(provider) or provider.id
+        if not counted[folder] then counted[folder] = true;moduleCount = moduleCount + 1 end
+        provider.mcTaxonomyEntry = nil
+        if taxonomy then
+            local entry = entryOf(provider)
+            provider.mcTaxonomyEntry = entry
+            local preferred = entry.preferred
+            if options.groupModules == false then
+                plain[#plain + 1] = provider
+            elseif preferred and not taxonomy.definitions[preferred] and minimum > 0
+                and (preferredCounts[preferred] or 0) >= minimum then
+                local kind = preferred == provider.mcFolderAuthor and 'Author' or 'Collection'
+                local found = group('preferred:' .. preferred, preferred, kind, COLLECTION_ICON, true)
+                collections[found] = true
+                join(found, provider)
             else
-                parentDeclared=trimmed(provider.mcListGroup)~=nil
-                keys={trimmed(provider.mcListGroup) or not provider.detectedKind and trimmed(provider.author) or false}
+                -- A preferred main category or category counts as declared first.
+                local declared = {}
+                if preferred and taxonomy.definitions[preferred] then declared[1] = preferred end
+                for _, id in ipairs(entry.categories or {}) do declared[#declared + 1] = id end
+                provider.mcCategories = declared
+                local ok, parents = pcall(taxonomy.parents, taxonomy, declared)
+                if not ok then parents = entry.parents or {'other'} end
+                for _, section in ipairs(parents) do
+                    sections[section] = true
+                    local definition = taxonomy.definitions[section] or {}
+                    group('section:' .. section, nil, definition.description or section,
+                        TOP_ICONS[section] or '…', false)
+                end
             end
-            if folder then
-                for _,foundation in ipairs(FOUNDATION) do
-                    if folder:lower():sub(-#foundation.id)==foundation.id:lower() then
-                        keys={'ModCore'};parentDeclared=true;break
+        else
+            local own = trimmed(provider.mcListGroup)
+            local key = own or not provider.detectedKind and trimmed(provider.author) or nil
+            if options.groupModules == false or not key then plain[#plain + 1] = provider
+            else
+                local found = group('list:' .. key, key, own and 'Collection' or 'Author', COLLECTION_ICON, own ~= nil)
+                join(found, provider)
+            end
+        end
+    end
+    -- Top category members, walked by category in taxonomy order then load order.
+    if taxonomy then
+        local position = {}
+        for n, definition in ipairs(taxonomy.data.categories) do position[definition.id] = n end
+        for _, found in ipairs(groups) do
+            local section = found.key:match('^section:(.+)$')
+            if section then
+                local ranked = {}
+                for _, provider in ipairs(listed) do
+                    local best
+                    for _, id in ipairs(provider.mcCategories or {}) do
+                        local definition = taxonomy.definitions[id]
+                        local parent = definition and (definition.parent or id)
+                        if parent == section then
+                            -- A category walks before its main category declared alone.
+                            local rank = (position[id] or 0) + (definition.parent and 0 or 10000)
+                            if not best or rank < best then best = rank end
+                        end
+                    end
+                    if best then ranked[#ranked + 1] = {provider=provider, rank=best} end
+                end
+                table.sort(ranked, function(a, b)
+                    if a.rank ~= b.rank then return a.rank < b.rank end
+                    return order[a.provider] < order[b.provider]
+                end)
+                local present, titles = {}, {}
+                for _, item in ipairs(ranked) do
+                    join(found, item.provider)
+                    for _, id in ipairs(item.provider.mcCategories or {}) do
+                        local definition = taxonomy.definitions[id]
+                        if definition and definition.parent == section then present[id] = true end
                     end
                 end
-            end
-            parentKeys=keys
-        end
-        if taxonomy and not provider.mcTaxonomyEntry then
-            provider.mcTaxonomyEntry=register and register[folder] or {categories={'other'},parents={'other'},tags={}}
-        end
-        declared[provider]=parentDeclared
-        for _,key in ipairs(keys) do
-            if key=='ModCore' then members[#members+1]=provider
-            else
-                local list=key and named[key]
-                if key and not list then list={};named[key]=list;order[#order+1]=key end
-                if list then list[#list+1]=provider else various[#various+1]=provider end
+                for _, definition in ipairs(taxonomy.data.categories) do
+                    if present[definition.id] then titles[#titles + 1] = definition.description or definition.id end
+                end
+                found.title = joined(titles, section == 'other' and 'or' or 'and') or found.kind
             end
         end
     end
+    -- A list group of one mod joins the plain list.
+    local kept = {}
+    for _, found in ipairs(groups) do
+        if not taxonomy and #found.members < 2 then
+            for _, provider in ipairs(found.members) do plain[#plain + 1] = provider end
+        elseif #found.members > 0 then kept[#kept + 1] = found end
+    end
+    -- Top categories in taxonomy order, then collections in the load order of their
+    -- first mod.
+    local rank = {}
+    if taxonomy then
+        for n, section in ipairs(taxonomy.data.sections) do rank['section:' .. section.id] = n end
+    end
+    table.sort(kept, function(a, b)
+        local ra, rb = rank[a.key], rank[b.key]
+        if (ra ~= nil) ~= (rb ~= nil) then return ra ~= nil end
+        if ra and rb then return ra < rb end
+        return order[a.members[1]] < order[b.members[1]]
+    end)
+    -- The index tabs on MCS's own page: every installed module that depends on
+    -- ModCoreSettings, and the developer tools.
+    local openable = {}
+    for _, provider in ipairs(providers) do
+        local link = provider.mcLinkSlot
+        if link then openable[provider.id] = link.address
+        elseif not provider.noSettings then openable[provider.id] = true end
+    end
+    local modules, moduleFolders, versions = {}, {}, {}
+    for _, provider in ipairs(listed) do
+        local folder = folderOf(provider) or provider.id
+        if not moduleFolders[folder] and (provider == host or (provider.mcRequires or {})[HOST]) then
+            moduleFolders[folder] = true
+            modules[#modules + 1] = provider
+        end
+    end
+    table.sort(modules, function(a, b) return a.name:lower() < b.name:lower() end)
+    for _, provider in ipairs(providers) do
+        versions[provider.id] = clean(provider.version) or clean((options.pageVersions or {})[provider.id])
+    end
+    local indexed = extend(host, openable, modules, versions, tools, parse, options.read, report)
     local result = {}
     local function add(provider, line, label)
         if line ~= 'head' then provider.mcBrowserLevel, provider.mcBrowserIndent = 4, 20 end
-        local icon=provider.mcTaxonomyEntry and provider.mcTaxonomyEntry.icon
-        if not label and icon then label=icon..'  '..provider.name end
+        local icon = provider.mcTaxonomyEntry and provider.mcTaxonomyEntry.icon or provider.mcBrowserIcon
+        if not label and icon and line ~= 'head' then label = icon .. '  ' .. provider.name end
         -- A mod that declares it has no settings shows its name without DMM's notice.
         if provider.mcNoSettingsDeclared and not label then label = provider.name end
         provider.mcBrowserLine, provider.mcBrowserLabel = line, label
         result[#result + 1] = provider
     end
-    if next(corePages) or #tools > 0 or #members > 0 then
-        local openable = {}
-        for _, provider in ipairs(providers) do
-            local link = provider.mcLinkSlot
-            if link then openable[provider.id] = link.address
-            elseif not provider.noSettings then openable[provider.id] = true end
-        end
-        local versions
-        if parse then
-            local ids = {}
-            for _, provider in ipairs(modules) do ids[#ids + 1] = provider.id end
-            for _, entry in ipairs(FOUNDATION) do ids[#ids + 1] = entry.id end
-            versions = M.versions(ids, providers, options.pageVersions, options.folderVersion)
-        end
-        local head = root(openable, modules, tools, parse, report, versions)
-        add(head, 'head')
-        -- Tool pages stay among the providers so their links open them, but are never listed;
-        -- without the ModCore page to reach them, they are listed in its grid instead.
-        local reachable = head.mcManifest ~= nil
-        for _, tool in ipairs(tools) do
-            tool.mcBrowserHidden = reachable or nil
-            add(tool, 'cell')
-        end
-        for _, entry in ipairs(CORE) do
-            local provider = corePages[entry.id]
-            if provider then
-                add(provider, 'cell', entry.label)
+    local folded = {}
+    local function members(found, list, line)
+        local without = {}
+        local function one(provider)
+            if provider.noSettings then without[#without + 1] = provider
+            else
+                add(provider, line)
+                for _, child in ipairs(provider.mcChildren or {}) do add(child, line) end
             end
         end
-        for _, provider in ipairs(children) do add(provider, 'cell') end
-        for _, provider in ipairs(members) do
-            local icon = provider.mcBrowserIcon
-            add(provider, declared[provider] and 'cell' or 'row', icon and icon .. '  ' .. provider.name or nil)
+        for _, provider in ipairs(list) do one(provider) end
+        for _, provider in ipairs(without) do
+            provider.mcBrowserFolded = found and found.key or 'plain'
+            add(provider, line)
+            for _, child in ipairs(provider.mcChildren or {}) do add(child, line) end
         end
-    else
-        for _, provider in ipairs(children) do various[#various + 1] = provider end
-    end
-    -- A group of one mod joins Various Authors.
-    local groups = {}
-    for _, key in ipairs(order) do
-        if register or #named[key] > 1 then groups[#groups + 1] = key
-        else various[#various + 1] = named[key][1] end
-    end
-    local sectionOrder={}
-    if taxonomy then
-        for n,section in ipairs(taxonomy.data.sections) do sectionOrder[section.id]=n end
-    end
-    table.sort(groups, function(a,b)
-        local na=sectionOrder[a] or 4.5;local nb=sectionOrder[b] or 4.5
-        if na~=nb then return na<nb end
-        return a:lower()<b:lower()
-    end)
-    for _, key in ipairs(groups) do
-        local label=(options.categoryDescriptions or {})[key] or key:match('^preferred:(.*)$') or (key=='other' and 'Other or Specialized') or key
-        add(heading(GROUP_PREFIX .. key, label, 2, 0, label .. ' mods.'), 'head')
-        for _, provider in ipairs(named[key]) do add(provider, declared[provider] and 'cell' or 'row') end
-    end
-    if #various > 0 then
-        local listed = {}
-        for index, provider in ipairs(others) do listed[provider] = index end
-        table.sort(various, function(a, b) return listed[a] < listed[b] end)
-        if not register or options.groupModules~=false then
-            add(heading(GROUP_PREFIX .. 'various', register and 'Other or Specialized' or VARIOUS, 2, 0, 'Other modules.'), 'head')
+        if #without > 0 then
+            local entry = more(found and found.key or 'plain', #without)
+            folded[#folded + 1] = entry
+            add(entry, 'row')
         end
-        for _, provider in ipairs(various) do add(provider, 'row') end
+    end
+    for _, provider in ipairs(listed) do provider.mcBrowserFolded = nil end
+    for _, found in ipairs(kept) do
+        add(heading(found.key, found.title, found.kind, found.icon), 'head')
+        members(found, found.members, found.cells and 'cell' or 'row')
+    end
+    if #plain > 0 then
+        table.sort(plain, function(a, b) return order[a] < order[b] end)
+        local headed = options.groupModules ~= false
+        local found = headed and {key='various'} or nil
+        if headed then add(heading('various', register and 'Other' or VARIOUS, '', '…'), 'head') end
+        members(found, plain, 'row')
+    end
+    -- Tool pages stay among the providers so their links open them; while the index tabs
+    -- reach them they are never listed, otherwise they are listed like any mod.
+    for _, tool in ipairs(tools) do
+        tool.mcBrowserHidden = indexed or nil
+        add(tool, 'row')
     end
     for index, provider in ipairs(result) do providers[index] = provider end
     for index = #result + 1, #providers do providers[index] = nil end
-    providers.mcModuleCount=moduleCount
+    providers.mcModuleCount = moduleCount
+    providers.mcFolded = #folded > 0
     return providers
 end
 
 -- report(event,detail) (optional) receives failures. parse(manifest) (optional) builds the
--- ModCore page's settings. folderVersion(folder) (optional) reads a mod folder's version,
--- folderManifest(folder) (optional) its mod.json fields.
-function M.install(pages, report, parse, folderVersion, folderManifest, groupingOptions)
+-- host page's index tabs. folderVersion(folder) (optional) reads a mod folder's version,
+-- folderManifest(folder) (optional) its mod.json fields; read(path) (optional) the host
+-- page's manifest.
+function M.install(pages, report, parse, folderVersion, folderManifest, groupingOptions, read)
     if pages.mcBrowserGroupsVersion then return false end
     report = report or function() end
     assert(type(pages)=='table' and type(pages.build)=='function', 'DMM pages API unavailable')
     local build = pages.build
     pages.build = function(tree, providers, status, api)
         local options={pageVersions=type(api)=='table' and api.mcPageVersions or nil, folderVersion=folderVersion,
-            folderManifest=folderManifest}
+            folderManifest=folderManifest, read=read}
         if groupingOptions then
             local ok,value=pcall(groupingOptions)
             if ok then for key,setting in pairs(value) do options[key]=setting end
@@ -465,10 +490,12 @@ function M.install(pages, report, parse, folderVersion, folderManifest, grouping
             local setFilter = page.setFilter
             -- Compatible-only filtering keeps the group headings, which have no settings of
             -- their own, and mods that declare they have none; pages opened only through
-            -- links (mcBrowserHidden) are never listed. A failure leaves DMM's own filtering.
+            -- links (mcBrowserHidden) are never listed. Mods without settings stay folded
+            -- until their group's last entry is selected. A failure leaves DMM's own filtering.
             page.mcModuleCount=providers.mcModuleCount
+            page.mcExpanded={}
             local categoryFilter,tagFilter=options.categoryFilter,options.tagFilter
-            local hidden = options.taxonomy~=nil
+            local hidden = options.taxonomy~=nil or providers.mcFolded
             for _, provider in ipairs(providers) do
                 hidden = hidden or provider.mcBrowserHidden == true or provider.mcNoSettingsDeclared == true
                     or provider.mcBrowserHeading == true
@@ -483,10 +510,16 @@ function M.install(pages, report, parse, folderVersion, folderManifest, grouping
                         local entry=provider.mcTaxonomyEntry
                         local allowed=not options.taxonomy or not entry or (options.taxonomy:matches(entry,categoryFilter,false)
                             and options.taxonomy:matches(entry,tagFilter,true))
+                        local folded=provider.mcBrowserFolded
+                        if provider.mcBrowserMore then
+                            allowed=not self.compatibleOnly and not self.mcExpanded[provider.mcBrowserMore]
+                        elseif folded then
+                            allowed=allowed and self.mcExpanded[folded]==true
+                        end
                         visible[index] = allowed and not provider.mcBrowserHidden and (not self.compatibleOnly
                             or provider.mcBrowserHeading or provider.mcNoSettingsDeclared or not provider.noSettings)
                     end
-                    -- A plain group heading shows only while one of its pages does.
+                    -- A group heading shows only while one of its pages does.
                     for index, row in ipairs(self.allRows) do
                         local provider = providers[row.providerIndex]
                         if provider.mcBrowserHeading and provider.mcBrowserLine == 'head' then
@@ -494,7 +527,8 @@ function M.install(pages, report, parse, folderVersion, folderManifest, grouping
                             while self.allRows[next] do
                                 local member = providers[self.allRows[next].providerIndex]
                                 if member.mcBrowserLine == 'head' or member.mcBrowserLine == nil then break end
-                                any = any or visible[next]
+                                any = any or visible[next] and not member.mcBrowserMore
+                                    or member.mcBrowserMore and visible[next]
                                 next = next + 1
                             end
                             visible[index] = any
@@ -525,6 +559,20 @@ function M.install(pages, report, parse, folderVersion, folderManifest, grouping
                     end
                 end)
                 if not ok then report('BROWSER_GROUPS_FAILED', err) end
+            end
+            -- Selecting a group's "… and X more" entry lists its mods without settings.
+            if type(page.showDetail)=='function' then
+                local showDetail=page.showDetail
+                function page:showDetail(rowIndex)
+                    local row=self.rows and self.rows[rowIndex]
+                    local provider=row and providers[row.providerIndex]
+                    if provider and provider.mcBrowserMore then
+                        self.mcExpanded[provider.mcBrowserMore]=true
+                        self:setFilter(self.compatibleOnly)
+                        return
+                    end
+                    return showDetail(self,rowIndex)
+                end
             end
             function page:setCategoryFilter(values,mode)
                 if options.taxonomy then options.taxonomy:matches({categories={},parents={},tags={}}, {values=values,mode=mode},false) end

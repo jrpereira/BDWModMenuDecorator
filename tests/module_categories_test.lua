@@ -26,7 +26,7 @@ end
 local options=reader();local list=providers();G.arrange(list,nil,nil,options)
 local headings,seen,instances={},{},{}
 for _,p in ipairs(list) do
- if p.mcBrowserHeading then headings[#headings+1]=p.name
+ if p.mcBrowserHeading then headings[#headings+1]=p.mcBrowserKind
  else seen[p.id]=(seen[p.id] or 0)+1;instances[p.id]=instances[p.id] or p;assert(instances[p.id]==p) end
 end
 assert(table.concat(headings,'|')=='Content|Presentation|Other or Specialized')
@@ -35,9 +35,12 @@ assert(list.mcModuleCount==3,'placements and child pages do not inflate module c
 local first=#list;G.arrange(list,nil,nil,options);assert(#list==first,'rebuild does not multiply placements')
 files.config='[Modules]\nGroupModules=1\nPreferredCategoryMinimum=2\n'
 list=providers();G.arrange(list,nil,nil,reader())
-assert(list[1].name=='Custom' and list[2].id=='A' and list[3].id=='A.child' and list[4].id=='B')
+-- Top categories come first, then collections.
+assert(list[1].mcBrowserKind=='Other or Specialized' and list[2].id=='U'
+ and list[3].name=='Custom' and list[3].mcBrowserKind=='Collection'
+ and list[4].id=='A' and list[5].id=='A.child' and list[6].id=='B')
 local one={{id='A',name='A',mcFolder='A'},{id='A.child',name='Child',mcBrowserLevel=4,mcFolder='A'}}
-G.arrange(one,nil,nil,reader());assert(one[1].name=='Content','children do not meet the preferred-group threshold')
+G.arrange(one,nil,nil,reader());assert(one[1].mcBrowserKind=='Content','children do not meet the preferred-group threshold')
 files.config='[Modules]\nGroupModules=0\n'
 list=providers();G.arrange(list,nil,nil,reader());assert(#list==4 and list.mcModuleCount==3)
 files.index='{invalid';local retained=reader();assert(retained.categoryRegister.A.categories[1]=='gear' and errors==1)

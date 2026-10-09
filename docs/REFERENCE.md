@@ -35,11 +35,11 @@ notifications), `name`, optional `author`, `version`, `description`, `visible`,
 settings as [`menu` data](#menu-data) (preferred) or a `manifest`, either with
 `configDirectory`, and at most one of `under` (an earlier page of the same
 contributor) or `attach` (a mod folder name). `link` makes a
-[slot link](#slot-rows) entry. `group='module'` lists the page on the ModCore
-page's Modules tab; a mod whose `mod.json` sets `"group": "ModCore"` is listed
-there without it. `group='tool'` lists the page only on the ModCore page's
-Developer Tools tab, which opens it; the mod list does not show it. A tool page
-needs settings, as any page DMM opens does.
+[slot link](#slot-rows) entry. `group='tool'` lists the page only on the ModCore
+Settings page's Developer Tools tab, which opens it; the mod list does not show it.
+A tool page needs settings, as any page DMM opens does. `group='module'` is accepted
+and has no effect: the Installed tab lists every mod whose `mod.json` depends on
+ModCoreSettings.
 
 Placement on every menu build:
 
@@ -334,7 +334,7 @@ presentation only: the row stays enabled and its value saves as usual.
 scrollable text area showing a text source the host provides, newest line at the
 bottom. While the row shows, the source is checked about once a second; new text
 scrolls the area to its end. An unknown source shows "Unavailable." The ModCore
-page's Errors tab uses the `errors` source: the latest 100 error lines of
+Settings page's Errors tab uses the `errors` source: the latest 100 error lines of
 `UE4SS.log` (ModCore `ERROR`/`CRITICAL` messages, failed Lua calls, and lines
 mentioning an error, exception or stack traceback, with their stack traces).
 
@@ -549,4 +549,6 @@ preserves its keys and changes the pending picker to Custom.
 
 The Settings page's Modules tab provides Group modules (Yes/No) and Preferred Category valid with # modules (No/2/3). Apply saves [Modules] GroupModules (1/0) and PreferredCategoryMinimum (0/2/3) in config.ini. Defaults are Yes and 2. The next module browser build uses the applied values.
 
-ModCoreTemplates publishes categories per installed UE4SS mod folder. A category always remains available as fallback; mcCategory is preferred only when the required number of distinct available folders declare it. Child pages count once. No disables preferred categories; disabling grouping removes ordinary category headings. The foundation navigation remains together under ModCore. Unregistered folders and conflicting matches use Other or Specialized.
+Browser grouping is described in [Module categories](MODULE_CATEGORIES.md#browser-behavior). Every mod, ModCore's own included, groups by the same rules. Unregistered folders and conflicting matches use Other or Specialized.
+
+ModCore Settings' own page also carries three generated tabs, rebuilt with the mod list: Installed (ModCore Settings and every mod whose `mod.json` depends on it, each opening its page or showing No settings), Errors, and Developer Tools (the `group='tool'` pages).

@@ -12,6 +12,17 @@
   the `ModCore` group is listed on the Modules tab without declaring
   `group='module'`. `mod.json` `icon` is shown for detected mods too.
 - `mcLabel=<text>` names a category heading in place of its category name.
+- The mod browser has no ModCore special case. ModCore's modules group through
+  their `mod.json` (`browser.preferred: "ModCore"`) like any other mod.
+  Top categories come first, then collections. Within a group, mods walk by
+  category then load order, and mods without settings fold into a final
+  "… and X more with no settings" entry.
+- Group headers show the icon in a box of their own, a small line naming the group
+  (top category, Collection or Author) and the title, with a rule that fills the
+  rest of the width.
+- The ModCore page is gone. Its Installed (formerly Modules), Errors and Developer
+  Tools tabs are on ModCore Settings' own page. Installed lists every mod that
+  depends on ModCoreSettings.
 - A level-one setting takes the page title row on every page, and never shows a
   dirty star there; ModCoreSettings no longer treats ModCore Templates pages
   differently.

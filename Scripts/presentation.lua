@@ -1340,7 +1340,7 @@ function M.install(choices,controls,pages,options)
             -- background, its name wrapping to two lines before it is cut off; a 'row' page on
             -- a line of its own. A thin vertical line marks each line on its left. Hidden
             -- pages keep their place in the list.
-            local HEAD,BAR,CELL,GAP,CELLS,WIDTH=160,20,180,8,3,584
+            local ICON,ICON_HEIGHT,BAR,CELL,GAP,CELLS,WIDTH=40,56,20,180,8,3,584
             local function frame(row,width,height)
                 local box=api.construct('/Script/UMG.Border',tree)
                 box:SetBrushColor(cycleBackground)
@@ -1387,17 +1387,26 @@ function M.install(choices,controls,pages,options)
             end
             -- Each group is one box in the list, rebuilt from its shown pages whenever the
             -- filter changes, so a hidden page leaves no gap and an empty group disappears.
+            -- The header and every page first move to the group's collapsed park: a widget
+            -- left without a parent is not rooted, and garbage collection would free it
+            -- under the wrapper kept here, crashing the next filter change.
             local function layoutGroup(group,shown)
-                group.box:ClearChildren()
+                group.header:RemoveFromParent();place(group.park,group.header)
+                for _,row in ipairs(group.members) do
+                    row.mcFrame:RemoveFromParent();place(group.park,row.mcFrame)
+                end
+                for _,line in ipairs(group.lines) do line:RemoveFromParent() end
+                group.lines={}
                 local visible=shown(group.head)
                 group.box:SetVisibility(visible and 0 or 1)
                 if not visible then return end
-                place(group.box,group.header)
+                group.header:RemoveFromParent();place(group.box,group.header)
                 local members={}
                 for _,row in ipairs(group.members) do
                     if shown(row) then members[#members+1]=row end
                 end
-                for _,line in ipairs(groupLines(group.head,members)) do place(group.box,line) end
+                group.lines=groupLines(group.head,members)
+                for _,line in ipairs(group.lines) do place(group.box,line) end
             end
             local function lineBrowserRows(rows)
                 local groups,current={},nil
@@ -1429,12 +1438,39 @@ function M.install(choices,controls,pages,options)
                         local cell=providers[row.providerIndex].mcBrowserLine=='cell'
                         row.mcFrame=frame(row,cell and CELL or WIDTH-BAR-GAP,cell and 44 or 40)
                     end
+                    -- The header: the group's icon in a box of its own, then a small line
+                    -- naming the kind of group above the title, whose rule is centred on
+                    -- it and fills the rest of the width.
+                    local provider=providers[group.head.providerIndex]
                     local header=api.construct('/Script/UMG.HorizontalBox',tree)
-                    group.head.wrapper:SetWidthOverride(HEAD);place(header,group.head.wrapper)
-                    local line=rule('horizontal',2);line:SetWidthOverride(WIDTH-HEAD)
-                    api.need(header:AddChild(line),'MCS mod-list group header line'):SetVerticalAlignment(2)
-                    group.header=header
+                    local iconBox=api.construct('/Script/UMG.SizeBox',tree)
+                    iconBox:SetWidthOverride(ICON);iconBox:SetHeightOverride(ICON_HEIGHT)
+                    local icon=api.caption(tree,provider.mcBrowserIcon or '')
+                    api.Theme.font(icon,api.theme,22);icon:SetFont(icon.Font);icon:SetJustification(1)
+                    local iconSlot=api.need(iconBox:SetContent(icon),'MCS mod-list group icon')
+                    iconSlot:SetHorizontalAlignment(2);iconSlot:SetVerticalAlignment(2)
+                    place(header,iconBox,{Left=0,Top=0,Right=8,Bottom=0})
+                    local text=api.construct('/Script/UMG.VerticalBox',tree)
+                    local kind=api.caption(tree,provider.mcBrowserKind or '')
+                    api.Theme.font(kind,api.theme,11);kind:SetFont(kind.Font);api.Theme.textColor(kind,'muted')
+                    kind:SetVisibility((provider.mcBrowserKind or '')~='' and 4 or 1)
+                    place(text,kind,{Left=0,Top=4,Right=0,Bottom=0})
+                    local titleLine=api.construct('/Script/UMG.HorizontalBox',tree)
+                    group.head.wrapper:ClearWidthOverride();place(titleLine,group.head.wrapper)
+                    local line=rule('horizontal',2)
+                    local lineSlot=api.need(titleLine:AddChild(line),'MCS mod-list group header line')
+                    lineSlot:SetVerticalAlignment(2);lineSlot:SetSize({SizeRule=1,Value=1})
+                    lineSlot:SetPadding({Left=8,Top=0,Right=0,Bottom=0})
+                    place(text,titleLine)
+                    api.need(header:AddChild(text),'MCS mod-list group header text'):SetSize({SizeRule=1,Value=1})
+                    local width=api.construct('/Script/UMG.SizeBox',tree)
+                    width:SetWidthOverride(WIDTH)
+                    api.need(width:SetContent(header),'MCS mod-list group header width')
+                    group.header=width
                     group.box=api.construct('/Script/UMG.VerticalBox',tree)
+                    group.park=api.construct('/Script/UMG.VerticalBox',tree)
+                    group.park:SetVisibility(1);place(group.box,group.park)
+                    group.lines={}
                 end
                 for _,child in ipairs(children) do
                     local name=child.widget:GetFullName()

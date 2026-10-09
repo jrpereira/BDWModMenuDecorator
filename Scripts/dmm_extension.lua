@@ -85,18 +85,18 @@ extension={
             textTable=contributions.textTable,playerExists=playerExists})
         local mods=directory:match('^(.*[/\\])[^/\\]+[/\\]Scripts[/\\]$')
         local folderManifest=browserGroups.folderManifest(mods)
-        browserGroups.install(dmm.pages,report,function(content) return dmm.choices.parse(content) end,
-            browserGroups.folderVersion(mods),folderManifest,
-            moduleCategories.reader(directory..'../cache/modules_register.json',directory..'../config.ini',nil,
-                {taxonomy=taxonomy,json=indexJson,report=report}))
-        config.install(dmm.choices)
-        assert(ModRef and type(ModRef.GetSharedVariable)=='function','DMM shared variables unavailable')
         local function read(path)
             local file=assert(io.open(path,'rb'))
             local content=file:read('a')
             file:close()
             return assert(content,'unreadable '..path)
         end
+        browserGroups.install(dmm.pages,report,function(content) return dmm.choices.parse(content) end,
+            browserGroups.folderVersion(mods),folderManifest,
+            moduleCategories.reader(directory..'../cache/modules_register.json',directory..'../config.ini',nil,
+                {taxonomy=taxonomy,json=indexJson,report=report}),read)
+        config.install(dmm.choices)
+        assert(ModRef and type(ModRef.GetSharedVariable)=='function','DMM shared variables unavailable')
         -- Hooks storage sits inside the slot model, which must stay outermost.
         pageHooks.install(dmm.choices,report)
         local loadHooks=pageHooks.loader()

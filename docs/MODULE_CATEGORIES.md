@@ -83,17 +83,29 @@ does not prevent the settings integration from loading.
 
 ## Browser behavior
 
-The default browser displays populated parent sections. A module appears once
-per applicable parent; placements reuse the same provider and settings. Children
-stay with their parent page. Module totals and preferred-group thresholds count
-distinct folders, not placements or settings pages. Foundation pages retain their
-ModCore grouping.
+Every mod follows the same rules; ModCore's own modules group themselves through
+their `mod.json` like any other mod.
 
-Group modules and Preferred Category valid with # modules retain their existing
-settings in `config.ini` under `[Modules]`. A preferred author/custom/category
-group replaces parent placements only when its distinct-folder threshold is met;
-otherwise the module uses its taxonomy parents. No disables preferred grouping.
-Disabling module grouping lists each page once.
+- **Top categories** are listed in taxonomy order, each once it has a module. A
+  module appears once per top category its categories belong to; placements reuse
+  the same provider and settings.
+- **Collections** follow, in the load order of their first module. A collection is
+  a `preferred` name shared by at least Preferred Category valid with # modules
+  distinct folders; `preferred: author` uses the declared author. A module in a
+  valid collection is listed only there. A `preferred` value naming a category
+  counts as that category declared first and forms no collection.
+- **Within a group**, modules are walked by category in taxonomy order, then load
+  order. Child pages stay with their parent. Modules with settings come first; the
+  rest fold into a final "… and X more with no settings" entry, which lists them
+  when selected.
+- **Headers** show the group's icon in a box of its own, a small line naming the
+  group (the top category, `Collection` or `Author`) and a title: the categories
+  present, or the collection's name. Collections use ⁂.
+
+Module totals and collection thresholds count distinct folders, not placements or
+settings pages. Group modules and Preferred Category valid with # modules are saved
+in `config.ini` under `[Modules]`; No disables collections, and disabling module
+grouping lists each page once.
 
 `page:setCategoryFilter(ids, 'any'|'all')` and
 `page:setTagFilter(ids, 'any'|'all')` filter independently. The two filters combine

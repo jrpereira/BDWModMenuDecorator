@@ -110,6 +110,7 @@ local function widget()
     function w:SetRenderOpacity(v) assert(type(v)=='number');self.opacity=v end
     function w:SetFont(v) self.Font=v end
     function w:SetWidthOverride(v) self.WidthOverride=v end
+    function w:ClearWidthOverride() self.WidthOverride=nil end
     function w:SetHeightOverride(v) self.HeightOverride=v end
     function w:ClearHeightOverride() self.HeightOverride=nil;self.heightCleared=true end
     function w:SetMinDesiredHeight(v) self.MinDesiredHeight=v end
@@ -302,7 +303,7 @@ assert(categoryLabel.Slot.Padding.Left==0
 -- ungrouped rows keep their place.
 local lineProviders={
     {name='Before',choices=items},
-    {name='ModCore',choices=items,mcBrowserLine='head'},
+    {name='ModCore',choices=items,mcBrowserLine='head',mcBrowserIcon='⁂',mcBrowserKind='Collection'},
     {name='Templates',choices=items,mcBrowserLine='cell',mcBrowserLabel='T  Templates',mcBrowserLevel=4,mcBrowserIndent=20},
     {name='Visuals',choices=items,mcBrowserLine='cell',mcBrowserHidden=true,mcBrowserLevel=4,mcBrowserIndent=20},
     {name='Controls',choices=items,mcBrowserLine='cell',mcBrowserLevel=4,mcBrowserIndent=20},
@@ -315,12 +316,41 @@ local list=lineRows[1].wrapper:GetParent()
 assert(#list.children==4 and list.children[1]==lineRows[1].wrapper and list.children[3]==lineRows[4].wrapper
     and list.children[4]==lineRows[7].wrapper,'the group box replaces the head row; hidden and other rows keep their place')
 local group=list.children[2]
-local header,grid=group.children[1],group.children[2]
-assert(#group.children==2 and group.visible==0,'a group box holds its header and its lines')
-assert(#header.children==2 and header.children[1]==lineRows[2].wrapper and header.children[1].WidthOverride==160
-    and header.children[2].HeightOverride==2 and header.children[2].WidthOverride==424
-    and header.children[2]:GetContent() and header.children[2].Slot.VerticalAlignment==2,
-    'the header is the ModCore entry followed by a horizontal line')
+local park,header,grid=group.children[1],group.children[2],group.children[3]
+assert(#group.children==3 and group.visible==0 and park.visible==1 and #park.children==0,
+    'a group box holds its collapsed park, its header and its lines')
+-- Widgets without a parent are not rooted and garbage collection frees them, so every
+-- grouped page and header must stay in the list whatever the filter shows.
+local function rooted(widget)
+    while widget do
+        if widget==list then return true end
+        widget=widget.parent
+    end
+    return false
+end
+local function allRooted()
+    for _,index in ipairs({2,3,5,6}) do
+        if not rooted(lineRows[index].wrapper) then return false end
+    end
+    return true
+end
+assert(allRooted(),'every grouped page starts in the list')
+-- The header: the icon in a box of its own, then the kind of group above the title,
+-- whose rule is centred on the title line and fills the rest of the width.
+assert(header.WidthOverride==584,'the header spans the list')
+local headerRow=header:GetContent()
+local iconBox,text=headerRow.children[1],headerRow.children[2]
+assert(#headerRow.children==2 and iconBox.WidthOverride==40 and iconBox:GetContent().text=='⁂'
+    and iconBox:GetContent().Slot.HorizontalAlignment==2 and iconBox:GetContent().Slot.VerticalAlignment==2,
+    'the icon sits centred in its own box')
+assert(text.Slot.Size.SizeRule==1,'the text fills the rest of the header')
+local kind,titleLine=text.children[1],text.children[2]
+assert(kind.text=='Collection' and kind.Font.Size==11 and kind.color=='muted' and kind.visible==4,
+    'a small muted line names the kind of group')
+assert(#titleLine.children==2 and titleLine.children[1]==lineRows[2].wrapper and lineRows[2].wrapper.WidthOverride==nil
+    and titleLine.children[2].HeightOverride==2 and titleLine.children[2]:GetContent()
+    and titleLine.children[2].Slot.VerticalAlignment==2 and titleLine.children[2].Slot.Size.SizeRule==1,
+    'the title keeps its own width and its rule is centred on it, filling the rest')
 assert(#grid.children==4 and grid.children[1].HeightOverride==44 and grid.children[1].WidthOverride==20
     and grid.children[1]:GetContent(),'a grid row starts with its vertical line')
 for n,index in ipairs({3,5,6}) do
@@ -333,17 +363,23 @@ for n,index in ipairs({3,5,6}) do
 end
 -- A filter that hides a page closes its gap; one that hides the heading hides the group.
 linePage:mcLayoutGroups(function(row) return row~=lineRows[3] end)
-grid=group.children[2]
-assert(#group.children==2 and #grid.children==3 and grid.children[2]:GetContent()==lineRows[5].wrapper
+grid=group.children[3]
+assert(#group.children==3 and #grid.children==3 and grid.children[2]:GetContent()==lineRows[5].wrapper
     and grid.children[3]:GetContent()==lineRows[6].wrapper,'the next pages move up into the hidden page\'s place')
+assert(allRooted() and #park.children==1 and park.children[1]:GetContent()==lineRows[3].wrapper,
+    'a hidden page waits in the collapsed park')
 linePage:mcLayoutGroups(function(row) return row~=lineRows[2] end)
-assert(group.visible==1,'a hidden heading hides its whole group')
+assert(group.visible==1 and allRooted() and #group.children==1 and #park.children==4,
+    'a hidden heading hides its whole group, its header and pages parked')
 linePage:mcLayoutGroups()
-assert(group.visible==0 and #group.children[2].children==4,'showing every page restores the grid')
+assert(group.visible==0 and #group.children==3 and #group.children[3].children==4 and #park.children==0
+    and allRooted(),'showing every page restores the grid')
 local fourProviders={{name='ModCore',choices=items,mcBrowserLine='head'}}
 for n=1,4 do fourProviders[#fourProviders+1]={name='Module '..n,choices=items,mcBrowserLine='cell'} end
-local fourGroup=pages.build(widget(),fourProviders,nil,api).allRows[1].wrapper:GetParent():GetParent()
-assert(#fourGroup.children==3 and #fourGroup.children[2].children==4 and #fourGroup.children[3].children==2,
+-- A heading's row sits in its title line, in the header text, row and width box, in its group.
+local function groupBox(row) local w=row.wrapper;for _=1,5 do w=w:GetParent() end;return w end
+local fourGroup=groupBox(pages.build(widget(),fourProviders,nil,api).allRows[1])
+assert(#fourGroup.children==4 and #fourGroup.children[3].children==4 and #fourGroup.children[4].children==2,
     'a fourth page starts the next grid row')
 assert(lineRows[3].widget:GetContent().text=='T  Templates','a short browser label replaces the page name')
 -- A 'row' page takes a whole line of its own after the grid; each group has its own header.
@@ -353,16 +389,16 @@ local mixedProviders={{name='Bob',choices=items,mcBrowserLine='head'},
     {name='Various Authors',choices=items,mcBrowserLine='head'},
     {name='Solo',choices=items,mcBrowserLine='row'}}
 local mixedRows=pages.build(widget(),mixedProviders,nil,api).allRows
-local bob=mixedRows[1].wrapper:GetParent():GetParent()
-local various=mixedRows[4].wrapper:GetParent():GetParent()
-assert(#bob.children==3 and #various.children==2 and bob.parent==various.parent,
-    'each group is its own box: a header, then its lines')
-local rowLine=bob.children[3]
+local bob=groupBox(mixedRows[1])
+local various=groupBox(mixedRows[4])
+assert(#bob.children==4 and #various.children==3 and bob.parent==various.parent,
+    'each group is its own box: a park, a header, then its lines')
+local rowLine=bob.children[4]
 assert(#rowLine.children==2 and rowLine.children[1].HeightOverride==40
     and rowLine.children[2]:GetContent()==mixedRows[3].wrapper and mixedRows[3].wrapper.WidthOverride==556
     and mixedRows[3].wrapper.HeightOverride==40 and not mixedRows[3].widget:GetContent().AutoWrapText,
     'a row page is one line across the group')
-assert(various.children[2].children[2]:GetContent()==mixedRows[5].wrapper,'the next group lists its own pages')
+assert(various.children[3].children[2]:GetContent()==mixedRows[5].wrapper,'the next group lists its own pages')
 local ui=controls.build(widget(),{{id='ModCoreTemplates.module.VisualExample',choices=items}},api)
 ui.mcHeaderHost=widget()
 ui:show(1)
