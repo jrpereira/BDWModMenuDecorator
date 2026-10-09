@@ -41,6 +41,5 @@ and `data/mod_categories.json`. Packaging regenerates these outputs automaticall
 
 The `mod_registry_test.lua`, `module_patterns_test.lua` and `startup_test.lua`
 suites cover matching, boot cache ownership, file index handoff and failure
-isolation. `python3 -m unittest discover -s tests -p 'test_classifiers.py'` checks
-comparison reporting. See [Module categories](MODULE_CATEGORIES.md) for cache and
+isolation. See [Module categories](MODULE_CATEGORIES.md) for cache and
 matching behavior. Verify the first scan, cached restart and browser grouping in game.

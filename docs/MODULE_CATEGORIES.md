@@ -100,12 +100,3 @@ Disabling module grouping lists each page once.
 with AND and also respect the existing compatible-only filter. These are browser
 API methods; no additional filter controls or density thresholds are introduced.
 Parent sections are not subdivided automatically.
-
-## Offline comparison
-
-Run `python3 work/registar/tools/compare_classifiers.py --mods <Mods> --out <results>
---reviews <reviews.json>` from MCS's root. Page review, source review and heuristic
-predictions remain independent. `--reference <labels.json>` supplies reviewed
-truth; `--live-results <results.json>` supplies captured live predictions.
-Comparisons treat category selections as unordered sets, and distinguish agreement
-from accuracy. Existing single-category review records remain readable.
